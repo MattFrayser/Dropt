@@ -7,3 +7,8 @@ edition = "2024"
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1.6", features = ["v4"] }
+clap = { version = "4.4", features = ["derive"] }
+aes-gcm = { version = "0.10", features = ["stream"] } 
+base64 = "0.21"
+rand = "0.8"
+futures = "0.3"
