@@ -1,18 +1,20 @@
+use crossterm::{
+    event::{self, Event, KeyCode},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     widgets::{Block, Borders, Gauge, Paragraph, Wrap},
     Terminal,
 };
-use crossterm::{
-    event::{self, Event, KeyCode}, execute, terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen}
-};
 use std::{io, time::Duration};
 use tokio::sync::watch;
 
 pub struct TransferUI {
     progress: watch::Receiver<f64>, // tokio channel for watching values
-    file_name: String, 
+    file_name: String,
     file_hash: String,
     qr_code: String,
     url: String,
@@ -24,15 +26,20 @@ impl TransferUI {
         file_name: String,
         file_hash: String,
         qr_code: String,
-        url: String
+        url: String,
     ) -> Self {
-        Self { progress, file_name, file_hash, qr_code, url }
+        Self {
+            progress,
+            file_name,
+            file_hash,
+            qr_code,
+            url,
+        }
     }
 
-
     pub async fn run(&mut self) -> Result<(), io::Error> {
-        enable_raw_mode()?; // switch terminal to raw 
-        
+        enable_raw_mode()?; // switch terminal to raw
+
         let mut stdout = io::stdout();
 
         execute!(stdout, EnterAlternateScreen)?;
@@ -43,7 +50,7 @@ impl TransferUI {
 
         loop {
             // read latest progress
-            let progress =  *self.progress.borrow();
+            let progress = *self.progress.borrow();
 
             // Terminal is split into 2 parts
             // left side is text info
@@ -52,12 +59,9 @@ impl TransferUI {
                 let sides = Layout::default()
                     .direction(Direction::Horizontal)
                     .margin(2)
-                    .constraints([
-                        Constraint::Percentage(100),
-                        Constraint::Percentage(0)
-                    ])
+                    .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
                     .split(f.size());
-            
+
                 let left_side = Layout::default()
                     .direction(Direction::Vertical)
                     .margin(1)
@@ -69,7 +73,7 @@ impl TransferUI {
                         Constraint::Min(0),
                     ])
                     .split(sides[0]);
-                
+
                 // widgets
                 let title = Paragraph::new(format!("Sending: {}", self.file_name))
                     .block(Block::default().borders(Borders::ALL));
@@ -86,28 +90,24 @@ impl TransferUI {
                 f.render_widget(hash, left_side[2]);
 
                 // OSC 8 hyperlink format: \x1b]8;;URL\x1b\\TEXT\x1b]8;;\x1b\\
-                let url = Paragraph::new(format!("{}", self.url))
-                    .wrap(Wrap { trim: false });
+                let url = Paragraph::new(format!("{}", self.url)).wrap(Wrap { trim: false });
                 f.render_widget(url, left_side[3]);
 
-               // let qr = Paragraph::new(self.qr_code.clone())
-               //     .block(Block::default().title("Scan").borders(Borders::ALL))
-               //     .alignment(ratatui::layout::Alignment::Center);
-               // f.render_widget(qr, sides[1]);
-
-
+                let qr = Paragraph::new(self.qr_code.clone())
+                    .block(Block::default().title("Scan").borders(Borders::ALL))
+                    .alignment(ratatui::layout::Alignment::Center);
+                f.render_widget(qr, sides[1]);
             })?;
 
             // Check for keypresses (exit)
             if event::poll(Duration::from_millis(100))? {
                 if let Event::Key(key) = event::read()? {
-                    match key.code { 
+                    match key.code {
                         KeyCode::Char('q') => break,
                         KeyCode::Char('c') => break,
                         KeyCode::Esc => break,
                         _ => {}
                     }
-
                 }
             }
 
@@ -123,4 +123,3 @@ impl TransferUI {
         Ok(())
     }
 }
-

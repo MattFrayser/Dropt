@@ -9,7 +9,7 @@ async function startDownload() {
             throw new Error('Missing encryption key')
         }
 
-        // Clear url fragment immediatly 
+        // Clear url fragment immediatly after getti 
         // window.location.replace(window.location.href.split('#')[0])
 
         // base64 -> string -> byte array
