@@ -1,25 +1,18 @@
 use super::utils;
 use crate::qr;
-use crate::server::ServerDirection;
+use crate::server::{ServerDirection, ServerMode};
 use crate::tunnel::CloudflareTunnel;
 use axum::Router;
 use std::net::SocketAddr;
 use tokio::sync::watch;
-
-pub enum ServerMode {
-    Tunnel,
-    Local,
-    Http,
-}
 
 pub struct Server {
     pub app: Router,
     pub token: String,
     pub key: String,
     pub nonce: String,
-    pub progress_consumer: watch::Receiver<f64>,
     pub file_name: String,
-    pub file_hash: String,
+    pub progress_consumer: watch::Receiver<f64>,
 }
 
 pub async fn start_local(
@@ -46,13 +39,7 @@ pub async fn start_local(
     );
 
     let qr_code = qr::generate_qr(&url);
-    utils::spawn_tui(
-        server.progress_consumer,
-        server.file_name,
-        server.file_hash,
-        qr_code,
-        url,
-    );
+    utils::spawn_tui(server.progress_consumer, server.file_name, qr_code, url);
 
     // HTTPS Server
     let handle = axum_server::Handle::new();
@@ -78,7 +65,6 @@ pub async fn start_http(
         nonce,
         progress_consumer,
         file_name,
-        file_hash,
     } = server;
 
     // Start local HTTP
@@ -103,7 +89,7 @@ pub async fn start_http(
 
     // Make Tui
     let qr_code = qr::generate_qr(&url);
-    utils::spawn_tui(progress_consumer, file_name, file_hash, qr_code, url);
+    utils::spawn_tui(progress_consumer, file_name, qr_code, url);
 
     // Keep tunnel alive until Ctrl-C
     tokio::signal::ctrl_c().await?;
@@ -122,7 +108,6 @@ pub async fn start_tunnel(
         nonce,
         progress_consumer,
         file_name,
-        file_hash,
     } = server;
     // Start local HTTP
     let port = spawn_http_server(app).await?;
@@ -133,9 +118,6 @@ pub async fn start_tunnel(
     println!("waiting for local server");
     utils::wait_for_server_ready(port, 5).await?;
     println!("local server ready");
-
-    println!("Allowing server to fully initialize...");
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
     // Start tunnel
     println!("starting cloudflair tunnel");
@@ -160,7 +142,7 @@ pub async fn start_tunnel(
     println!("{}", url);
 
     let qr_code = qr::generate_qr(&url);
-    utils::spawn_tui(progress_consumer, file_name, file_hash, qr_code, url);
+    utils::spawn_tui(progress_consumer, file_name, qr_code, url);
 
     // Keep tunnel alive until Ctrl-C
     tokio::signal::ctrl_c().await?;
