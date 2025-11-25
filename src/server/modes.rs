@@ -1,7 +1,7 @@
 use super::utils;
-use crate::qr;
-use crate::server::{ServerDirection, ServerMode};
+use crate::server::ServerDirection;
 use crate::tunnel::CloudflareTunnel;
+use crate::{output, qr};
 use axum::Router;
 use std::net::SocketAddr;
 use tokio::sync::watch;
@@ -19,6 +19,7 @@ pub async fn start_local(
     server: Server,
     direction: ServerDirection,
 ) -> Result<u16, Box<dyn std::error::Error>> {
+    let spinner = output::spinner("Starting local HTTPS server...");
     // local Ip and Certs
     let local_ip = utils::get_local_ip().unwrap_or_else(|| "127.0.0.1".to_string());
     let tls_config = utils::generate_cert(&local_ip).await?;
@@ -27,6 +28,10 @@ pub async fn start_local(
     let addr = SocketAddr::from(([127, 0, 0, 0], 0));
     let listener = tokio::net::TcpListener::bind(addr).await?;
     let port = listener.local_addr()?.port();
+    spinner.set_message(format!("Waiting for server on port {}...", port));
+
+    utils::wait_for_server_ready(port, 5).await?;
+    output::finish_spinner_success(&spinner, &format!("Server ready on port {}", port));
 
     let service = match direction {
         ServerDirection::Send => "download",
@@ -37,9 +42,15 @@ pub async fn start_local(
         "https://{}:{}/{}/{}#key={}&nonce={}",
         local_ip, port, service, server.token, server.key, server.nonce
     );
+    println!("{}", url);
 
     let qr_code = qr::generate_qr(&url);
-    utils::spawn_tui(server.progress_consumer, server.file_name, qr_code, url);
+    utils::spawn_tui(
+        server.progress_consumer,
+        server.file_name,
+        qr_code,
+        service == "upload",
+    );
 
     // HTTPS Server
     let handle = axum_server::Handle::new();
@@ -66,15 +77,14 @@ pub async fn start_http(
         progress_consumer,
         file_name,
     } = server;
-
     // Start local HTTP
+    let spinner = output::spinner("Starting local server...");
     let port = spawn_http_server(app).await?;
-    println!("listening on port {}", port);
+    spinner.set_message(format!("Waiting for server on port {}...", port));
 
     // Wait for server to be ready before starting tunnel
-    println!("waiting for local server");
     utils::wait_for_server_ready(port, 5).await?;
-    println!("local server ready");
+    output::finish_spinner_success(&spinner, &format!("Server ready on port {}", port));
 
     let service = match direction {
         ServerDirection::Send => "download",
@@ -89,7 +99,7 @@ pub async fn start_http(
 
     // Make Tui
     let qr_code = qr::generate_qr(&url);
-    utils::spawn_tui(progress_consumer, file_name, qr_code, url);
+    utils::spawn_tui(progress_consumer, file_name, qr_code, service == "upload");
 
     // Keep tunnel alive until Ctrl-C
     tokio::signal::ctrl_c().await?;
@@ -110,19 +120,16 @@ pub async fn start_tunnel(
         file_name,
     } = server;
     // Start local HTTP
+    let spinner = output::spinner("Starting local server...");
     let port = spawn_http_server(app).await?;
-
-    println!("listening on port {}", port);
+    spinner.set_message(format!("Waiting for server on port {}...", port));
 
     // Wait for server to be ready before starting tunnel
-    println!("waiting for local server");
     utils::wait_for_server_ready(port, 5).await?;
-    println!("local server ready");
+    output::finish_spinner_success(&spinner, &format!("Server ready on port {}", port));
 
     // Start tunnel
-    println!("starting cloudflair tunnel");
     let tunnel = CloudflareTunnel::start(port).await?;
-    println!("tunnel started");
 
     let service = match direction {
         ServerDirection::Send => "download",
@@ -137,12 +144,10 @@ pub async fn start_tunnel(
         key,
         nonce
     );
-
-    println!("\nTunnel ready!");
     println!("{}", url);
 
     let qr_code = qr::generate_qr(&url);
-    utils::spawn_tui(progress_consumer, file_name, qr_code, url);
+    utils::spawn_tui(progress_consumer, file_name, qr_code, service == "upload");
 
     // Keep tunnel alive until Ctrl-C
     tokio::signal::ctrl_c().await?;

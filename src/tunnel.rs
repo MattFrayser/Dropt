@@ -1,7 +1,10 @@
 use regex::Regex;
 use std::process::Stdio;
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
+
+use crate::output;
 
 pub struct CloudflareTunnel {
     process: Child,
@@ -10,14 +13,18 @@ pub struct CloudflareTunnel {
 
 impl CloudflareTunnel {
     pub async fn start(local_port: u16) -> Result<Self, Box<dyn std::error::Error>> {
+        // ui spinner
+        let spinner = output::spinner("Starting tunnel...");
+
+        spinner.set_message("Starting cloudflare tunnel...");
+        spinner.enable_steady_tick(Duration::from_millis(80));
+
         // check cloudflared installed
         if !Self::is_installed().await {
             return Err("cloudflared not installed.\n 
                 Install cloudflared or use --local."
                 .into());
         }
-
-        println!("cloudflared installed");
 
         // spawn cloudflared process & capture output
         let mut child = Command::new("cloudflared")
@@ -44,11 +51,11 @@ impl CloudflareTunnel {
         .await
         .map_err(|_| "Tunnel startup timed out.")??;
 
-        println!("{:?}", url);
-
         tokio::spawn(async move {
             Self::monitor_stderr(reader).await;
         });
+
+        spinner.finish_with_message("Tunnel established");
 
         Ok(Self {
             process: child,
@@ -64,7 +71,7 @@ impl CloudflareTunnel {
         let mut lines = reader.lines();
 
         while let Some(line) = lines.next_line().await? {
-            println!("[cloudflared] {}", line); // Log all output
+            //println!("[cloudflared] {}", line); // Log all output
             if line.contains("trycloudflare.com") {
                 if let Some(url) = Self::extract_url(&line) {
                     // Return URL and the reader to continue monitoring
@@ -81,7 +88,7 @@ impl CloudflareTunnel {
         while let Ok(Some(line)) = lines.next_line().await {
             // Only log errors - keep the stream alive without spam
             if line.contains("ERR") || line.contains("error") || line.contains("failed") {
-                eprintln!("[cloudflared] {}", line);
+                output::error(&format!("[cloudflared] {}", line));
             }
             // Silently consume all other output to keep tunnel alive
         }

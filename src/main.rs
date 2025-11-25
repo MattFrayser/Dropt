@@ -1,3 +1,4 @@
+use archdrop::output;
 use archdrop::server::{self, ServerMode};
 use clap::{Parser, Subcommand};
 use std::fs::File;
@@ -54,7 +55,7 @@ async fn main() {
             // fail fast on no file
             if !path.exists() {
                 // file.display() formats paths
-                eprintln!("Error: File not found: {}", path.display());
+                output::error(&format!("File not found: {}", path.display()));
                 std::process::exit(1);
             }
 
@@ -80,7 +81,7 @@ async fn main() {
             match server::start_server(file_to_send, mode, server::ServerDirection::Send).await {
                 Ok(_) => {}
                 Err(e) => {
-                    eprintln!("Error: {}", e);
+                    output::error(&format!("{}", e));
                     std::process::exit(1);
                 }
             }
@@ -98,18 +99,18 @@ async fn main() {
             // check dir location exits
             if !destination.exists() {
                 if let Err(e) = tokio::fs::create_dir_all(&destination).await {
-                    eprintln!(
-                        "Error: Cannot create directory {}: {}",
+                    output::error(&format!(
+                        "Cannot create directory {}: {}",
                         destination.display(),
                         e
-                    );
+                    ));
                     std::process::exit(1);
                 }
             }
 
             // Verify its a dir
             if !destination.is_dir() {
-                eprintln!("Error: {} is not a directory", destination.display());
+                output::error(&format!("{} is not a directory", destination.display()));
                 std::process::exit(1);
             }
 
@@ -126,7 +127,7 @@ async fn main() {
             match server::start_server(destination, mode, server::ServerDirection::Recieve).await {
                 Ok(_) => {}
                 Err(e) => {
-                    eprintln!("Error: {}", e);
+                    output::error(&format!("{}", e));
                     std::process::exit(1);
                 }
             }
