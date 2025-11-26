@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
@@ -6,15 +7,24 @@ use uuid::Uuid;
 
 const SESSION_LIFETIME: Duration = Duration::from_secs(15 * 60);
 
+pub struct SessionData {
+    pub file_path: PathBuf,
+    pub used: bool, // flag to prevent replay attacks
+    pub created_at: Instant,
+}
+
+impl SessionData {
+    fn is_expired(&self) -> bool {
+        self.created_at.elapsed() > SESSION_LIFETIME
+    }
+
+    fn is_valid(&self) -> bool {
+        !self.used && !self.is_expired()
+    }
+}
 #[derive(Clone)]
 pub struct SessionStore {
     sessions: Arc<Mutex<HashMap<String, SessionData>>>,
-}
-
-pub struct SessionData {
-    pub file_path: String,
-    pub used: bool, // flag to prevent replay attacks
-    pub created_at: Instant,
 }
 
 impl SessionStore {
@@ -25,7 +35,7 @@ impl SessionStore {
         }
     }
 
-    pub async fn create_session(&self, file_path: String) -> String {
+    pub async fn create_session(&self, file_path: PathBuf) -> String {
         let token = Uuid::new_v4().to_string();
 
         // Acquire lock to HashMap
@@ -43,22 +53,20 @@ impl SessionStore {
             },
         );
 
-        token // return ownership of token to caller
+        token
     }
 
-    pub async fn validate_and_mark_used(&self, token: &str) -> Option<String> {
+    pub async fn validate_and_mark_used(&self, token: &str) -> Option<PathBuf> {
         let mut sessions = self.sessions.lock().await;
         if let Some(session) = sessions.get_mut(token) {
             // lazy check expiration
-            if session.created_at.elapsed() > SESSION_LIFETIME {
+            if session.is_expired() {
                 sessions.remove(token);
                 return None;
             }
-            if !session.used {
+            if session.is_valid() {
                 // mark as used FIRST, prevent possible race condition
                 session.used = true;
-
-                // Hashmap owns String so clone it to return ownership
                 return Some(session.file_path.clone());
             }
         }
@@ -72,7 +80,7 @@ impl SessionStore {
         let sessions = self.sessions.lock().await;
         sessions
             .get(token)
-            .map(|session| !session.used)
+            .map(|session| session.is_valid())
             .unwrap_or(false)
     }
 }

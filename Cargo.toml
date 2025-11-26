@@ -1,7 +1,7 @@
 [package]
 name = "archdrop"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 axum = "0.7"
@@ -26,3 +26,4 @@ walkdir = "2.5"
 regex = "1"
 indicatif = "0.17"
 console = "0.15"
+anyhow = "1.0"

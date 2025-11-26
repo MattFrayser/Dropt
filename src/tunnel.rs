@@ -1,3 +1,4 @@
+use anyhow::{bail, ensure, Context, Result};
 use regex::Regex;
 use std::process::Stdio;
 use std::time::Duration;
@@ -12,7 +13,7 @@ pub struct CloudflareTunnel {
 }
 
 impl CloudflareTunnel {
-    pub async fn start(local_port: u16) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn start(local_port: u16) -> Result<Self> {
         // ui spinner
         let spinner = output::spinner("Starting tunnel...");
 
@@ -20,11 +21,13 @@ impl CloudflareTunnel {
         spinner.enable_steady_tick(Duration::from_millis(80));
 
         // check cloudflared installed
-        if !Self::is_installed().await {
-            return Err("cloudflared not installed.\n 
-                Install cloudflared or use --local."
-                .into());
-        }
+        ensure!(
+            Self::is_installed().await,
+            "cloudflared is not installed\n\
+             \n\
+             Install: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/\n\
+             Or use --local flag for HTTPS without tunnel"
+        );
 
         // spawn cloudflared process & capture output
         let mut child = Command::new("cloudflared")
@@ -38,9 +41,13 @@ impl CloudflareTunnel {
             ])
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
-            .spawn()?;
+            .spawn()
+            .context("Failed to spawn cloudflared process")?;
 
-        let stderr = child.stderr.take().ok_or("No stderr")?;
+        let stderr = child
+            .stderr
+            .take()
+            .context("Failed to capture cloudflared output")?;
 
         // Parse stream with timeout
         // reader keeps stream alive after url
@@ -49,7 +56,7 @@ impl CloudflareTunnel {
             Self::parse_stream(stderr),
         )
         .await
-        .map_err(|_| "Tunnel startup timed out.")??;
+        .map_err(|_| anyhow::anyhow!("Tunnel startup timed out after 30 seconds"))??;
 
         tokio::spawn(async move {
             Self::monitor_stderr(reader).await;
@@ -65,8 +72,7 @@ impl CloudflareTunnel {
 
     async fn parse_stream(
         stream: impl tokio::io::AsyncRead + Unpin,
-    ) -> Result<(String, BufReader<impl tokio::io::AsyncRead + Unpin>), Box<dyn std::error::Error>>
-    {
+    ) -> Result<(String, BufReader<impl tokio::io::AsyncRead + Unpin>)> {
         let reader = BufReader::new(stream);
         let mut lines = reader.lines();
 
@@ -79,8 +85,7 @@ impl CloudflareTunnel {
                 }
             }
         }
-
-        Err("No tunnel URL found".into())
+        bail!("Tunnel started but no URL was found in cloudflared output");
     }
 
     async fn monitor_stderr(stream: BufReader<impl tokio::io::AsyncRead + Unpin>) {

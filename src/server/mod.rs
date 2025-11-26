@@ -4,6 +4,7 @@ pub mod utils;
 use crate::crypto::Encryptor;
 use crate::server::handlers::AppState;
 use crate::session::SessionStore;
+use anyhow::Result;
 use axum::{
     routing::{get, post},
     Router,
@@ -20,23 +21,21 @@ pub enum ServerMode {
 #[derive(Debug)]
 pub enum ServerDirection {
     Send,
-    Recieve,
+    Receive,
 }
 
 pub async fn start_server(
     file_path: PathBuf,
     mode: ServerMode,
     direction: ServerDirection,
-) -> Result<u16, Box<dyn std::error::Error>> {
+) -> Result<u16> {
     let sessions = SessionStore::new();
     let encryptor = Encryptor::new();
 
     // encrypion values
     let key = encryptor.get_key_base64();
     let nonce = encryptor.get_nonce_base64();
-    let token = sessions
-        .create_session(file_path.to_string_lossy().to_string())
-        .await;
+    let token = sessions.create_session(file_path.clone()).await;
 
     // Progress channel
     let (progress_sender, progress_consumer) = watch::channel(0.0); // make progress channel
@@ -49,7 +48,7 @@ pub async fn start_server(
     let state = AppState {
         sessions,
         encryptor: Arc::new(encryptor),
-        progress_sender: Arc::new(tokio::sync::Mutex::new(progress_sender)),
+        progress_sender,
     };
 
     let app = match direction {
@@ -62,7 +61,7 @@ pub async fn start_server(
             .route("/crypto.js", get(handlers::serve_crypto_js))
             .with_state(state),
 
-        ServerDirection::Recieve => Router::new()
+        ServerDirection::Receive => Router::new()
             .route("/health", get(|| async { "OK" }))
             .route("/upload/:token", get(handlers::serve_upload_page))
             .route("/upload/:token/data", post(handlers::upload))
@@ -81,7 +80,7 @@ pub async fn start_server(
     };
 
     match mode {
-        ServerMode::Local => modes::start_local(server, direction).await,
+        ServerMode::Local => modes::start_https(server, direction).await,
         ServerMode::Tunnel => modes::start_tunnel(server, direction).await,
         ServerMode::Http => modes::start_http(server, direction).await,
     }

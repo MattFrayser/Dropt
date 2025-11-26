@@ -94,9 +94,10 @@ function* parseFrames(buffer) {
         }
 
         const frame = buffer.slice(4, 4 + length)
-        buffer = buffer.slice(4 + length) // remove chunk
+        remaining = buffer.slice(4 + length) // remove chunk
 
-        yield { frame, buffer }
+        yield { frame, remaining }
+        buffer = remaining
     }
 
 }

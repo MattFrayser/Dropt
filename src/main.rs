@@ -1,4 +1,4 @@
-use archdrop::output;
+use anyhow::{ensure, Context, Result};
 use archdrop::server::{self, ServerMode};
 use clap::{Parser, Subcommand};
 use std::fs::File;
@@ -32,7 +32,7 @@ enum Commands {
         )]
         http: bool,
     },
-    Recieve {
+    Receive {
         #[arg(default_value = ".", help = "Destination directory")]
         destination: PathBuf,
 
@@ -45,7 +45,7 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     // Reads std::env::args(), matches against struct def
     let cli = Cli::parse();
 
@@ -53,11 +53,7 @@ async fn main() {
         Commands::Send { path, local, http } => {
             // PathBuf.exits(); Check for file before spinning up
             // fail fast on no file
-            if !path.exists() {
-                // file.display() formats paths
-                output::error(&format!("File not found: {}", path.display()));
-                std::process::exit(1);
-            }
+            ensure!(path.exists(), "File not found: {}", path.display());
 
             // handle local flag
             let mode = if local {
@@ -70,7 +66,8 @@ async fn main() {
 
             // Handle folder
             let (file_to_send, cleanup_path) = if path.is_dir() {
-                let zip_path = create_zip_from_dir(&path).await.unwrap();
+                let zip_path = create_zip_from_dir(&path)
+                    .context(format!("Failed to create archive from {}", path.display()))?;
                 (zip_path.clone(), Some(zip_path))
             } else {
                 // singe file
@@ -78,41 +75,27 @@ async fn main() {
             };
 
             //  Start server with mode
-            match server::start_server(file_to_send, mode, server::ServerDirection::Send).await {
-                Ok(_) => {}
-                Err(e) => {
-                    output::error(&format!("{}", e));
-                    std::process::exit(1);
-                }
-            }
+            server::start_server(file_to_send, mode, server::ServerDirection::Send).await?;
 
             // cleanup temp zip
             if let Some(temp_path) = cleanup_path {
                 let _ = tokio::fs::remove_file(temp_path).await;
             }
         }
-        Commands::Recieve {
+        Commands::Receive {
             destination,
             local,
             http,
         } => {
             // check dir location exits
             if !destination.exists() {
-                if let Err(e) = tokio::fs::create_dir_all(&destination).await {
-                    output::error(&format!(
-                        "Cannot create directory {}: {}",
-                        destination.display(),
-                        e
-                    ));
-                    std::process::exit(1);
-                }
+                tokio::fs::create_dir_all(&destination)
+                    .await
+                    .context(format!("Cannot create directory {}", destination.display()))?;
             }
 
             // Verify its a dir
-            if !destination.is_dir() {
-                output::error(&format!("{} is not a directory", destination.display()));
-                std::process::exit(1);
-            }
+            ensure!(destination.is_dir(), "{} is not a directory", destination.display());
 
             // handle local flag
             let mode = if local {
@@ -124,18 +107,15 @@ async fn main() {
             };
 
             //  Start server with mode
-            match server::start_server(destination, mode, server::ServerDirection::Recieve).await {
-                Ok(_) => {}
-                Err(e) => {
-                    output::error(&format!("{}", e));
-                    std::process::exit(1);
-                }
-            }
+            server::start_server(destination, mode, server::ServerDirection::Receive)          
+                .await
+                .context("Failed to start file receiver")?;
         }
     }
+    Ok(())
 }
 
-async fn create_zip_from_dir(dir: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn create_zip_from_dir(dir: &Path) -> Result<PathBuf> {
     let dir_name = dir
         .file_name()
         .and_then(|n| n.to_str())
@@ -144,18 +124,27 @@ async fn create_zip_from_dir(dir: &Path) -> Result<PathBuf, Box<dyn std::error::
     let temp_dir = std::env::temp_dir();
     let zip_path = temp_dir.join(format!("{}.zip", dir_name));
 
-    let file = File::create(&zip_path)?;
+    let file = File::create(&zip_path)
+        .context(format!("Failed to create zip file at {}", zip_path.display()))?;
+
     let mut zip = zip::ZipWriter::new(file);
     let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
     for entry in WalkDir::new(dir).into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
-        let name = path.strip_prefix(dir)?;
+
+        let name = path.strip_prefix(dir)
+            .context(format!("Invalid path in directory: {}", path.display()))?;
 
         if path.is_file() {
-            zip.start_file(name.to_string_lossy().to_string(), options)?;
-            let contents = std::fs::read(path)?;
-            zip.write_all(&contents)?;
+            zip.start_file(name.to_string_lossy().to_string(), options)
+                .context(format!("Failed to add {} to archive", name.display()))?;
+
+            let contents = std::fs::read(path)
+                .context(format!("Failed to read file: {}", path.display()))?;
+
+            zip.write_all(&contents)
+                .context(format!("Failed to write {} to archive", name.display()))?;
         } else if !name.as_os_str().is_empty() {
             zip.add_directory(name.to_string_lossy().to_string(), options)?;
         }

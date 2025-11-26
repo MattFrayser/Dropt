@@ -17,7 +17,7 @@ async function startDownload() {
         let filename = 'download';
         const contentDisposition = response.headers.get('Content-Disposition');
         if (contentDisposition) {
-            filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+            const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
             if (filenameMatch) {
                 filename = filenameMatch[1];
             }
@@ -55,10 +55,6 @@ async function startDownload() {
         const fileData = concatArrays(...chunks) 
         console.log('Download complete:', fileData.length, 'bytes')
 
-
-        // calc hash for verificaiton
-        const hash = await calculateHash(fileData);
-        document.getElementById('file-hash').textContent = hash
 
         // Download
         const blob = new Blob([fileData])

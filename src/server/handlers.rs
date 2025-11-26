@@ -15,7 +15,7 @@ use tokio::sync::watch;
 pub struct AppState {
     pub sessions: SessionStore,
     pub encryptor: Arc<Encryptor>, // Arc = thread-safe shared ownership
-    pub progress_sender: Arc<tokio::sync::Mutex<watch::Sender<f64>>>,
+    pub progress_sender: watch::Sender<f64>,
 }
 
 pub async fn download_handler(
@@ -27,13 +27,7 @@ pub async fn download_handler(
         .sessions
         .validate_and_mark_used(&token)
         .await
-        .ok_or_else(|| {
-            println!("Token validation failed");
-            StatusCode::FORBIDDEN
-        })?; // None -> 403
-
-    println!("Token validated and marked as used");
-    println!("Original file: {}", file_path);
+        .ok_or(StatusCode::FORBIDDEN)?;
 
     // Extract filename
     let filename = std::path::Path::new(&file_path)
@@ -74,7 +68,7 @@ pub async fn download_handler(
             //consume buffer
             match file.read(&mut buf).await {
                 Ok(0) => {
-                    let _ = progress_sender.lock().await.send(100.0);
+                    let _ = progress_sender.send(100.0);
                     None
                 }
                 Ok(n) => {
@@ -91,7 +85,7 @@ pub async fn download_handler(
                     // update progress
                     bytes_sent += n as u64;
                     let progress = (bytes_sent as f64 / total_size) * 100.0;
-                    let _ = progress_sender.lock().await.send(progress);
+                    let _ = progress_sender.send(progress);
 
                     // return (stream item, state for next)
                     // Ok wraps body for Body::from_stream
@@ -168,7 +162,9 @@ pub async fn upload(
 
     // Accumulate exactly 8 bytes for size header
     while size_buffer.len() < 8 {
-        let chunk = stream.next().await
+        let chunk = stream
+            .next()
+            .await
             .ok_or(StatusCode::BAD_REQUEST)?
             .map_err(|_| StatusCode::BAD_REQUEST)?;
         size_buffer.extend_from_slice(&chunk);
@@ -176,8 +172,14 @@ pub async fn upload(
 
     // Parse total size from first 8 bytes (big-endian)
     let total_size = u64::from_be_bytes([
-        size_buffer[0], size_buffer[1], size_buffer[2], size_buffer[3],
-        size_buffer[4], size_buffer[5], size_buffer[6], size_buffer[7],
+        size_buffer[0],
+        size_buffer[1],
+        size_buffer[2],
+        size_buffer[3],
+        size_buffer[4],
+        size_buffer[5],
+        size_buffer[6],
+        size_buffer[7],
     ]) as f64;
 
     // Use remaining bytes after size header as initial buffer
@@ -218,7 +220,7 @@ pub async fn upload(
 
             // Update progress
             let progress = (bytes_received as f64 / total_size) * 100.0;
-            let _ = progress_sender.lock().await.send(progress.min(100.0));
+            let _ = progress_sender.send(progress.min(100.0));
         }
     }
 
@@ -228,7 +230,7 @@ pub async fn upload(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Send final 100% progress
-    let _ = progress_sender.lock().await.send(100.0);
+    let _ = progress_sender.send(100.0);
 
     println!("Upload complete");
 
