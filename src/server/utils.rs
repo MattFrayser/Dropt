@@ -1,9 +1,8 @@
-use crate::tui::TransferUI;
+use crate::ui::tui::TransferUI;
 use anyhow::{Context, Result};
 use axum_server::tls_rustls::RustlsConfig;
 use rcgen::generate_simple_self_signed;
 use std::net::UdpSocket;
-use tokio::signal;
 use tokio::sync::watch;
 
 pub async fn wait_for_server_ready(port: u16, timeout_secs: u64, use_https: bool) -> Result<()> {
@@ -37,6 +36,7 @@ pub async fn wait_for_server_ready(port: u16, timeout_secs: u64, use_https: bool
         }
     }
 }
+
 pub fn spawn_tui(
     progress: watch::Receiver<f64>,
     file_name: String,
@@ -50,14 +50,6 @@ pub fn spawn_tui(
             eprintln!("ui err: {}", e);
         }
     })
-}
-
-pub fn shutdown_handler(handle: axum_server::Handle) {
-    // Spawn ctrl-c handler
-    tokio::spawn(async move {
-        signal::ctrl_c().await.ok();
-        handle.shutdown();
-    });
 }
 
 pub fn get_local_ip() -> Option<String> {
