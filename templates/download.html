@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Orbit&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="/styles.css">
+    </head>
+
+    <body>
+        <div class="container">
+            <div>
+                <h1> ArchDrop </h1>
+                <div class="subtitle">Your file is ready to download.</div>
+
+                <div class="file-list" id="fileList"></div>
+
+                <button id="downloadBtn" class="download-btn">Download Files</button>
+            </div>
+            <div class="info">
+                <div class="info-item">
+                    <svg viewBox="0 0 24 24">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    <span>End-to-end encrypted (AES-256-GCM)</span>
+                </div>
+            </div>
+        </div>
+
+        <script src="/shared.js"></script>
+        <script src="/download.js"></script>
+    </body>
+</html>
