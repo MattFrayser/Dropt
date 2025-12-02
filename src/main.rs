@@ -5,6 +5,7 @@ use archdrop::{
 };
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+use tracing_subscriber::EnvFilter;
 use walkdir::WalkDir;
 
 // Clap for CLI w/ arg parsing
@@ -37,7 +38,12 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Read command args, match against struct def
+    // log tracing, default to info
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
     let cli = Cli::parse();
 
     match cli.command {
@@ -46,7 +52,6 @@ async fn main() -> Result<()> {
             let mut files_to_send = Vec::new();
 
             for path in paths {
-                // Check for file before spinning up
                 // fail fast on no file
                 ensure!(path.exists(), "File not found: {}", path.display());
 

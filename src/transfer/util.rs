@@ -18,6 +18,13 @@ pub struct AppError(anyhow::Error);
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
+        // full error chain for debugging
+        error!(
+            error = ?self.0,
+            backtrace = ?self.0.backtrace(),
+            "Internal Server error"
+        );
+
         // Return generic 500 to client
         StatusCode::INTERNAL_SERVER_ERROR.into_response()
     }
