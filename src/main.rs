@@ -72,43 +72,39 @@ async fn main() -> Result<()> {
 
             ensure!(!files_to_send.is_empty(), "No files to send");
 
+            // Send needs to build a manifest of file metadata
+            // to send to the reciever before download begins
             let manifest = Manifest::new(files_to_send, None)
                 .await
                 .context("Failed to create manifest")?;
 
-            // handle local flag
             let mode = if local {
                 ServerMode::Local
             } else {
                 ServerMode::Tunnel
             };
 
-            //  Start server with mode
             start_send_server(manifest, mode).await?;
         }
         Commands::Receive { destination, local } => {
-            // check dir location exits
             if !destination.exists() {
                 tokio::fs::create_dir_all(&destination)
                     .await
                     .context(format!("Cannot create directory {}", destination.display()))?;
             }
 
-            // Verify its a dir
             ensure!(
                 destination.is_dir(),
                 "{} is not a directory",
                 destination.display()
             );
 
-            // handle local flag
             let mode = if local {
                 ServerMode::Local
             } else {
                 ServerMode::Tunnel
             };
 
-            //  Start server with mode
             start_receive_server(destination, mode)
                 .await
                 .context("Failed to start file receiver")?;
