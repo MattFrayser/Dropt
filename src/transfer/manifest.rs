@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use crate::{crypto::types::Nonce, transfer::security};
 
+// Metadata for single file
 #[derive(Serialize, Deserialize, Clone)]
 pub struct FileEntry {
     pub index: usize,
@@ -15,6 +16,7 @@ pub struct FileEntry {
     pub nonce: String,
 }
 
+// List of all files
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Manifest {
     pub files: Vec<FileEntry>,
