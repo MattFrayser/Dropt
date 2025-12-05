@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = "0.7"
+axum = { version = "0.7", features = ["multipart"] }
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1.6", features = ["v4"] }
 clap = { version = "4.4", features = ["derive"] }
@@ -20,10 +20,24 @@ crossterm = "0.27"
 hostname = "0.4"
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 rcgen = "0.12"
-reqwest = "0.12"
+reqwest = { version = "0.12", features = ["json"] }
 zip = "2.2"
 walkdir = "2.5"
-regex = "1"
 indicatif = "0.17"
 console = "0.15"
 anyhow = "1.0"
+sysinfo = "0.30"
+serde_json = "1.0"
+serde = "1.0"
+tempfile = "3.23.0"
+hex = "0.4.3"
+dashmap = "6.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tokio-util = "0.7"
+axum_typed_multipart = "0.13"
+tower-http = { version = "0.6", features = ["cors"] }
+
+[dev-dependencies]
+reqwest = { version = "0.12", features = ["json", "multipart"] }
+
