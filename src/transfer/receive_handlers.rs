@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::crypto::types::Nonce;
 use crate::errors::AppError;
 use crate::server::auth::{self, ClientIdParam};
@@ -10,6 +12,7 @@ use axum::Json;
 use axum_typed_multipart::{TryFromMultipart, TypedMultipart};
 use bytes::Bytes;
 use serde_json::{json, Value};
+use tokio::sync::Mutex;
 use tokio_util::bytes;
 
 #[derive(serde::Deserialize)]
@@ -25,6 +28,7 @@ pub struct ClientManifest {
 
 #[derive(TryFromMultipart)]
 pub struct ChunkUploadRequest {
+    #[form_data(limit = "5MB")]
     pub chunk: Bytes,
     #[form_data(field_name = "relativePath")]
     pub relative_path: String,
@@ -71,15 +75,21 @@ pub async fn receive_handler(
     State(state): State<AppState>,
     TypedMultipart(payload): TypedMultipart<ChunkUploadRequest>,
 ) -> Result<axum::Json<Value>, AppError> {
+    tracing::debug!(
+        "Receiving chunk {} of {} for file: {} (chunk size: {} bytes)",
+        payload.chunk_index,
+        payload.total_chunks,
+        payload.relative_path,
+        payload.chunk.len()
+    );
     let receive_sessions = state
         .receive_sessions()
         .ok_or_else(|| anyhow::anyhow!("Invalid server mode: not a receive server"))?;
 
-    // Get or create session
     let file_id = security::hash_path(&payload.relative_path);
+    let client_id = &payload.client_id;
 
     // Sessions are claimed on first file and verified on rest
-    let client_id = &payload.client_id;
     let is_new_file = !receive_sessions.contains_key(&file_id);
 
     if is_new_file && payload.chunk_index == 0 {
@@ -88,17 +98,18 @@ pub async fn receive_handler(
         auth::require_active_session(&state.session, &token, client_id)?;
     }
 
-    // Lock receive session
-    let session_exits = receive_sessions.contains_key(&file_id);
-
-    if !session_exits {
+    // Clone the Arc<Mutex>, dropping the DashMap lock immediately
+    // Frees dashmap up for another process.
+    let file_session_mutex = if let Some(entry) = receive_sessions.get(&file_id) {
+        entry.clone()
+    } else {
+        // Create new session logic
         let destination = state
             .session
             .destination()
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("Invalid session type"))?;
 
-        // Validate provided path and join to base
         security::validate_path(&payload.relative_path).context("Invalid file path")?;
         let dest_path = destination.join(&payload.relative_path);
 
@@ -106,31 +117,60 @@ pub async fn receive_handler(
             .await
             .context("Failed to create storage")?;
 
-        receive_sessions.insert(
-            file_id.clone(),
-            FileReceiveState {
-                storage,
-                total_chunks: payload.total_chunks,
-                nonce: payload.nonce.clone().unwrap_or_default(),
-                relative_path: payload.relative_path.clone(),
-                file_size: payload.file_size,
-            },
-        );
+        let new_state = FileReceiveState {
+            storage,
+            total_chunks: payload.total_chunks,
+            nonce: payload.nonce.clone().unwrap_or_default(),
+            relative_path: payload.relative_path.clone(),
+            file_size: payload.file_size,
+        };
+
+        // Wrap in Arc<Mutex>
+        let new_entry = Arc::new(Mutex::new(new_state));
+        receive_sessions.insert(file_id.clone(), new_entry.clone());
+        new_entry
+    };
+
+    // Decrypt outside of mutex lock,
+
+    // If chunk is 0, payload will have nonce
+    // (chunk 0 will always contain nonce form network)
+    let nonce_string = if let Some(n) = &payload.nonce {
+        n.clone()
+    } else {
+        // Not chunk 0, grab mutex for nonce and drop immediately
+        let guard = file_session_mutex.lock().await;
+        let n = guard.nonce.clone();
+        drop(guard);
+        n
+    };
+
+    if nonce_string.is_empty() {
+        return Err(anyhow::anyhow!(
+            "Nonce missing. Chunk 0 must be uploaded first or nonce provided."
+        )
+        .into());
     }
 
-    let mut session = receive_sessions
-        .get_mut(&file_id)
-        .ok_or_else(|| anyhow::anyhow!("Invalid session"))?;
+    let nonce = Nonce::from_base64(&nonce_string)?;
+    let cipher = state.session.cipher();
 
-    // Update nonce if provided (chunk 0 contains the nonce)
-    if let Some(ref nonce_str) = payload.nonce {
-        if session.nonce.is_empty() {
-            eprintln!("[receive] Setting nonce from chunk {}", payload.chunk_index);
-            session.nonce = nonce_str.clone();
-        }
+    let decrypted_data = crate::crypto::decrypt_chunk_at_position(
+        cipher,
+        &nonce,
+        &payload.chunk,
+        payload.chunk_index as u32,
+    )?;
+
+    // File should be locked when writing
+    let mut session = file_session_mutex.lock().await;
+
+    // Update nonce in state if this was chunk 0
+    if session.nonce.is_empty() && payload.chunk_index == 0 {
+        session.nonce = nonce_string;
     }
 
-    // Check for duplicates
+    // Check duplicates
     if session.storage.has_chunk(payload.chunk_index) {
         return Ok(axum::Json(json!({
             "success": true,
@@ -141,14 +181,9 @@ pub async fn receive_handler(
         })));
     }
 
-    // store chunk
-    let nonce = Nonce::from_base64(&session.nonce)?;
-
-    let cipher = state.session.cipher();
-
     session
         .storage
-        .store_chunk(payload.chunk_index, payload.chunk, cipher, &nonce)
+        .store_chunk(payload.chunk_index, &decrypted_data)
         .await?;
 
     // Track progress
@@ -180,7 +215,6 @@ pub async fn finalize_upload(
     let client_id = &params.client_id;
     auth::require_active_session(&state.session, &token, client_id)?;
 
-    // Parse relativePath
     let mut relative_path = None;
     while let Some(field) = multipart.next_field().await? {
         if field.name() == Some("relativePath") {
@@ -193,17 +227,18 @@ pub async fn finalize_upload(
     // Generate file ID and remove from sessions map
     let file_id = security::hash_path(&relative_path);
 
-    let (_key, session) = receive_sessions
+    let (_key, session_mutex) = receive_sessions
         .remove(&file_id)
         .ok_or_else(|| anyhow::anyhow!("No upload session found for file: {}", relative_path))?;
 
-    // Verify all chunks received
+    // Lock to finalize
+    let mut session = session_mutex.lock().await;
+
     if session.storage.chunk_count() != session.total_chunks {
         return Err(anyhow::anyhow!(
-            "Incomplete upload: received {}/{} chunks for {}",
+            "Incomplete upload: received {}/{} chunks",
             session.storage.chunk_count(),
-            session.total_chunks,
-            relative_path
+            session.total_chunks
         )
         .into());
     }

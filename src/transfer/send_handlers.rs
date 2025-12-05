@@ -81,7 +81,7 @@ pub async fn send_handler(
 
     let encrypted_chunk = process_chunk(file_entry, chunk_index, state.session.cipher()).await?;
 
-    // 4. Update Progress (Only if this is the first time serving this chunk)
+    // Update Progress (Only first time serving this chunk)
     if !is_retry {
         let (new_total, session_total) = state.session.increment_sent_chunk();
         let raw_progress = (new_total as f64 / session_total as f64) * 100.0;

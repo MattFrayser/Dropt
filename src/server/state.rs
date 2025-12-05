@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use tokio::sync::watch;
+use tokio::sync::{watch, Mutex};
 
 use crate::{server::session::Session, transfer::storage::ChunkStorage};
 
@@ -19,7 +19,10 @@ pub struct FileReceiveState {
 #[derive(Clone)]
 pub enum TransferStorage {
     Send(Arc<DashMap<usize, Arc<std::fs::File>>>),
-    Receive(Arc<DashMap<String, FileReceiveState>>),
+    // Receives DashMap holds an Arc<Mutex>> to be able to clone the file state
+    // and drop the dashmap lock immediatly. This helps with concurrent proccess
+    // competeing and waiting for dashmap
+    Receive(Arc<DashMap<String, Arc<Mutex<FileReceiveState>>>>),
 }
 
 #[derive(Clone)]
@@ -57,7 +60,7 @@ impl AppState {
         }
     }
 
-    pub fn receive_sessions(&self) -> Option<&Arc<DashMap<String, FileReceiveState>>> {
+    pub fn receive_sessions(&self) -> Option<&Arc<DashMap<String, Arc<Mutex<FileReceiveState>>>>> {
         match &self.transfers {
             TransferStorage::Receive(sessions) => Some(sessions),
             _ => None,

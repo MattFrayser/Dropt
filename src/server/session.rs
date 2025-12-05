@@ -1,6 +1,7 @@
 use crate::crypto::types::EncryptionKey;
 use crate::transfer::manifest::{FileEntry, Manifest};
 use aes_gcm::{Aes256Gcm, KeyInit};
+use dashmap::DashMap;
 use sha2::digest::generic_array::GenericArray;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -31,6 +32,7 @@ pub struct Session {
     state: Arc<RwLock<SessionState>>, // RwLock inside Arc for concurrent safe access
     pub total_chunks: AtomicU64,
     pub chunks_sent: Arc<AtomicU64>, // Arc for concurrent file/chunk transfers
+    sent_chunks: Arc<DashMap<(usize, usize), ()>>, // Track sent chunks for deduplication
 }
 
 // AppState holds session and AppState needs to be cloned
@@ -46,6 +48,7 @@ impl Clone for Session {
             state: self.state.clone(),
             total_chunks: AtomicU64::new(self.total_chunks.load(Ordering::SeqCst)),
             chunks_sent: self.chunks_sent.clone(),
+            sent_chunks: self.sent_chunks.clone(),
         }
     }
 }
@@ -82,6 +85,7 @@ impl Session {
             state: Arc::new(RwLock::new(SessionState::Unclaimed)),
             total_chunks: AtomicU64::new(total_chunks),
             chunks_sent: Arc::new(AtomicU64::new(0)),
+            sent_chunks: Arc::new(DashMap::new()),
         }
     }
 
@@ -103,6 +107,25 @@ impl Session {
         let chunks_received = self.chunks_sent.fetch_add(1, Ordering::SeqCst) + 1;
         let total = self.total_chunks.load(Ordering::SeqCst);
         (chunks_received, total)
+    }
+
+    //-- Chunk Deduplication (Send Mode)
+
+    /// Check if a chunk has already been sent (for deduplication)
+    pub fn has_chunk_been_sent(&self, file_index: usize, chunk_index: usize) -> bool {
+        self.sent_chunks.contains_key(&(file_index, chunk_index))
+    }
+
+    /// Mark a chunk as sent. Returns true if this is the first time.
+    pub fn mark_chunk_sent(&self, file_index: usize, chunk_index: usize) -> bool {
+        self.sent_chunks
+            .insert((file_index, chunk_index), ())
+            .is_none()
+    }
+
+    /// Get count of unique chunks sent (for debugging/logging)
+    pub fn unique_chunks_sent(&self) -> usize {
+        self.sent_chunks.len()
     }
 
     //-- Accessors
@@ -136,15 +159,38 @@ impl Session {
         let client_id_owned = client_id.to_string();
 
         // Try to claim
-        let mut state = self.state.write().unwrap();
-        match *state {
+        let mut state = match self.state.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::error!("Session lock poisoned during claim, recovering");
+                poisoned.into_inner()
+            }
+        };
+        match &*state {
             SessionState::Unclaimed => {
+                tracing::debug!("Session claimed by client: {}", client_id);
                 *state = SessionState::Active {
                     client_id: client_id_owned,
                 };
                 true
             }
-            _ => false, // Already claimed or in another state, return false
+            SessionState::Active {
+                client_id: stored_id,
+            } => {
+                // Session is already claimed: Check if the client IDs match
+                let matches = stored_id == client_id;
+                if !matches {
+                    tracing::warn!(
+                        "Session access denied: expected client_id '{}', got '{}'",
+                        stored_id, client_id
+                    );
+                }
+                matches
+            }
+            SessionState::Completed => {
+                tracing::debug!("Session already completed");
+                false
+            }
         }
     }
 
@@ -153,7 +199,13 @@ impl Session {
             return false;
         }
 
-        let state = self.state.read().unwrap();
+        let state = match self.state.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::error!("Session lock poisoned during is_active check, recovering");
+                poisoned.into_inner()
+            }
+        };
         match &*state {
             SessionState::Active {
                 client_id: stored_id,
@@ -167,7 +219,14 @@ impl Session {
             return false;
         }
 
-        let mut state = self.state.write().unwrap();
+        let mut state = match self.state.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::error!("Session lock poisoned during complete, recovering");
+                poisoned.into_inner()
+            }
+        };
+        tracing::info!("Session completed by client: {}", client_id);
         *state = SessionState::Completed;
         true
     }

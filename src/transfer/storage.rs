@@ -2,9 +2,7 @@
 // Provides operations for chunk management
 // RAII guard is used for cleanups on Error
 
-use aes_gcm::Aes256Gcm;
 use anyhow::{Context, Result};
-use axum::body::Bytes;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::io::SeekFrom;
@@ -13,8 +11,6 @@ use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use crate::config::CHUNK_SIZE;
-use crate::crypto;
-use crate::crypto::types::Nonce;
 
 pub struct ChunkStorage {
     file: File,
@@ -62,24 +58,13 @@ impl ChunkStorage {
         self.chunks_received.len()
     }
 
-    pub async fn store_chunk(
-        &mut self,
-        chunk_index: usize,
-        encrypted_data: Bytes,
-        cipher: &Aes256Gcm,
-        nonce: &Nonce,
-    ) -> Result<()> {
-        // Decrypt chunk
-        // AES-GCM auth tag handles single chunk integrity
-        let decrypted =
-            crypto::decrypt_chunk_at_position(cipher, nonce, &encrypted_data, chunk_index as u32)?;
-
+    pub async fn store_chunk(&mut self, chunk_index: usize, decrypted_data: &[u8]) -> Result<()> {
         // Seek positon - handles out of order arival
         let offset = (chunk_index as u64) * CHUNK_SIZE;
         self.file.seek(SeekFrom::Start(offset)).await?;
 
         // Write & mark received
-        self.file.write_all(&decrypted).await.context(format!(
+        self.file.write_all(decrypted_data).await.context(format!(
             "Failed to write chunk {} at offset {}",
             chunk_index, offset
         ))?;
@@ -90,7 +75,7 @@ impl ChunkStorage {
     }
 
     // Clean up w/o drop, happy path
-    pub async fn cleanup(mut self) -> Result<()> {
+    pub async fn cleanup(&mut self) -> Result<()> {
         if !self.disarmed {
             self.disarmed = true; // prevent Drop
             tokio::fs::remove_file(&self.path)
@@ -101,7 +86,7 @@ impl ChunkStorage {
         Ok(())
     }
 
-    pub async fn finalize(mut self) -> Result<String> {
+    pub async fn finalize(&mut self) -> Result<String> {
         self.file.flush().await?;
 
         // Calc final hash for integrity of operation

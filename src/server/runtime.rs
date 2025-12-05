@@ -27,7 +27,9 @@ pub async fn start_https(
 
     let (port, server_handle) = start_local_server(server, Protocol::Https).await?;
 
-    let base_url = format!("https://127.0.0.1:{}", port);
+    // Use local IP instead of localhost for network access
+    let local_ip = helpers::get_local_ip().unwrap_or_else(|_| "127.0.0.1".to_string());
+    let base_url = format!("https://{}:{}", local_ip, port);
     let url = format!(
         "{}/{}/{}#key={}&nonce={}",
         base_url,
@@ -122,7 +124,9 @@ async fn start_local_server(
     // HTTPS uses self signed certs
     match protocol {
         Protocol::Https => {
-            let tls_config = helpers::generate_cert("127.0.0.1")
+            // Use local IP for certificate to allow network access
+            let local_ip = helpers::get_local_ip().unwrap_or_else(|_| "127.0.0.1".to_string());
+            let tls_config = helpers::generate_cert(&local_ip)
                 .await
                 .context("Failed to generate TLS certificate")?;
             tokio::spawn(async move {
@@ -174,16 +178,25 @@ async fn run_session(
     // TUI msgs
     let (status_sender, status_receiver) = tokio::sync::watch::channel(None);
 
-    // Spawn TUI
-    let qr_code = qr::generate_qr(&url)?;
-    let tui_handle = helpers::spawn_tui(
-        progress_receiver,
-        display_name,
-        qr_code,
-        service == "upload",
-        status_receiver,
-        tui_token.clone(),
-    );
+    // Spawn TUI (can be disabled with NO_TUI=1 for debugging)
+    let tui_handle = if std::env::var("NO_TUI").is_ok() {
+        // No TUI mode - just print URL and wait
+        println!("TUI disabled. Press Ctrl+C to stop.");
+        tokio::spawn(async move {
+            // Wait indefinitely until cancelled
+            tui_token.cancelled().await;
+        })
+    } else {
+        let qr_code = qr::generate_qr(&url)?;
+        helpers::spawn_tui(
+            progress_receiver,
+            display_name,
+            qr_code,
+            service == "upload",
+            status_receiver,
+            tui_token.clone(),
+        )
+    };
 
     // Spawn Ctrl+C handler with two-stage loop
     let signal_token = root_token.clone();
@@ -361,10 +374,12 @@ async fn cleanup_sessions(state: &AppState) {
                 .into_iter()
                 // take ownership FileReceiveState value
                 .filter_map(|key| sessions.remove(&key))
-                .map(|(_key, file_receive_state)| {
+                .map(|(_key, file_state_mutex)| {
                     // Spawn async cleanup operation task for each
                     tokio::spawn(async move {
-                        if let Err(e) = file_receive_state.storage.cleanup().await {
+                        let mut state = file_state_mutex.lock().await;
+                        // Uses updated signature (takes &mut self)
+                        if let Err(e) = state.storage.cleanup().await {
                             tracing::error!("Error during async cleanup: {}", e);
                         }
                     })
