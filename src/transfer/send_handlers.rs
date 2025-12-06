@@ -119,10 +119,18 @@ async fn process_chunk(
     // Read from disk
     let buffer = read_chunk_blocking(file_entry.full_path.clone(), start, chunk_len).await?;
 
-    // Encrypt
-    let file_nonce = Nonce::from_base64(&file_entry.nonce)?;
-    crypto::encrypt_chunk_at_position(cipher, &file_nonce, &buffer, chunk_index as u32)
-        .context("Encryption failed")
+    // Prepare data to move into the closure
+    let cipher = cipher.clone();
+    let nonce_str = file_entry.nonce.clone();
+
+    // Offload encryption to a blocking thread
+    // This prevents AES-GCM from stalling the async runtime
+    tokio::task::spawn_blocking(move || {
+        let file_nonce = Nonce::from_base64(&nonce_str)?;
+        crypto::encrypt_chunk_at_position(&cipher, &file_nonce, &buffer, chunk_index as u32)
+            .context("Encryption failed")
+    })
+    .await?
 }
 
 pub async fn complete_download(

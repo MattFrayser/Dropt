@@ -83,7 +83,7 @@ pub async fn receive_manifest(
         let dest_path = destination.join(&file.relative_path);
 
         // Initialize storage (creates/truncates file) safely here in serial order
-        let storage = ChunkStorage::new(dest_path)
+        let storage = ChunkStorage::new(dest_path, file.size)
             .await
             .context("Failed to create storage")?;
 
@@ -141,16 +141,24 @@ pub async fn receive_handler(
     if nonce_string.is_empty() {
         return Err(anyhow::anyhow!("Nonce missing.").into());
     }
-
     let nonce = Nonce::from_base64(&nonce_string)?;
-    let cipher = state.session.cipher();
 
-    let decrypted_data = crate::crypto::decrypt_chunk_at_position(
-        cipher,
-        &nonce,
-        &payload.chunk,
-        payload.chunk_index as u32,
-    )?;
+    // Clone what is needed for the thread
+    let cipher = state.session.cipher().clone();
+    let chunk_data = payload.chunk.clone();
+    let chunk_index = payload.chunk_index;
+    let nonce_val = nonce.clone();
+
+    // Offload CPU work
+    let decrypted_data = tokio::task::spawn_blocking(move || {
+        crate::crypto::decrypt_chunk_at_position(
+            &cipher,
+            &nonce_val,
+            &chunk_data,
+            chunk_index as u32,
+        )
+    })
+    .await??;
 
     // File should be locked when writing
     let mut session = file_session_mutex.lock().await;

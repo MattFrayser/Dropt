@@ -20,7 +20,7 @@ pub struct ChunkStorage {
 }
 
 impl ChunkStorage {
-    pub async fn new(dest_path: PathBuf) -> Result<Self> {
+    pub async fn new(dest_path: PathBuf, file_size: u64) -> Result<Self> {
         // Create parent dir
         if let Some(parent) = dest_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
@@ -37,6 +37,8 @@ impl ChunkStorage {
                 "Failed to create storage file: {}",
                 dest_path.display()
             ))?;
+
+        file.set_len(file_size).await?;
 
         Ok(Self {
             file,
