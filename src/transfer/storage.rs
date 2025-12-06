@@ -20,33 +20,70 @@ pub struct ChunkStorage {
 }
 
 impl ChunkStorage {
-    pub async fn new(dest_path: PathBuf, file_size: u64) -> Result<Self> {
+    pub async fn new(mut dest_path: PathBuf, file_size: u64) -> Result<Self> {
         // Create parent dir
         if let Some(parent) = dest_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
 
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&dest_path)
-            .await
-            .context(format!(
-                "Failed to create storage file: {}",
-                dest_path.display()
-            ))?;
+        // Break apart file: name, ext, path
+        // name and ext are broken apart for naming like test (1).txt if duplicates
+        let stem = dest_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unnamed")
+            .to_string();
 
-        file.set_len(file_size).await?;
+        let extension = dest_path
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|e| format!(".{}", e))
+            .unwrap_or_default();
 
-        Ok(Self {
-            file,
-            path: dest_path,
-            chunks_received: HashSet::new(),
-            disarmed: false,
-        })
+        let parent_dir = dest_path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
+
+        let mut counter = 1;
+
+        loop {
+            // First try open file as new
+            let result = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create_new(true)
+                .open(&dest_path)
+                .await;
+
+            match result {
+                Ok(file) => {
+                    file.set_len(file_size).await?;
+
+                    return Ok(Self {
+                        file,
+                        path: dest_path,
+                        chunks_received: HashSet::new(),
+                        disarmed: false,
+                    });
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    // Catch collision via error
+                    let new_name = format!("{} ({}){}", stem, counter, extension);
+                    dest_path = parent_dir.join(new_name);
+                    counter += 1;
+                }
+                Err(e) => {
+                    // real error
+                    return Err(anyhow::Error::new(e).context(format!(
+                        "Failed to create storage file: {}",
+                        dest_path.display()
+                    )));
+                }
+            };
+        }
     }
+
     //-- Accessors
     pub fn has_chunk(&self, chunk_index: usize) -> bool {
         self.chunks_received.contains(&chunk_index)
