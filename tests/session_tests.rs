@@ -175,19 +175,6 @@ async fn test_send_session_get_file() {
 }
 
 #[tokio::test]
-async fn test_session_cipher_access() {
-    let temp_dir = TempDir::new().unwrap();
-    let dest_path = temp_dir.path().to_path_buf();
-    let key = EncryptionKey::new();
-
-    let session = Session::new_receive(dest_path, key, 0);
-
-    // Should be able to get cipher
-    let _cipher = session.cipher();
-    assert!(true, "Cipher should be accessible");
-}
-
-#[tokio::test]
 async fn test_session_modes() {
     let temp_dir = TempDir::new().unwrap();
     let test_file = temp_dir.path().join("test.txt");
