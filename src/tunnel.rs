@@ -5,7 +5,7 @@ use std::process::Stdio;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, ChildStderr, Command};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 const TUNNEL_URL_TIMEOUT: Duration = Duration::from_secs(15);
 const TUNNEL_POLL_INTERVAL: Duration = Duration::from_millis(200);

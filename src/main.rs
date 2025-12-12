@@ -39,9 +39,11 @@ enum Commands {
 #[tokio::main]
 async fn main() -> Result<()> {
     // log tracing, default to info
+    // Suppress debug logs from dependencies (reqwest, hyper, etc)
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("info,reqwest=warn,hyper_util=warn")),
         )
         .init();
     let cli = Cli::parse();
