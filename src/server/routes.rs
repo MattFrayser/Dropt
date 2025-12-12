@@ -35,10 +35,8 @@ pub fn create_send_router(state: &AppState) -> Router {
 
 /// Create router for receive mode
 pub fn create_receive_router(state: &AppState) -> Router {
-    // Apply body limit before adding routes
-    let router = Router::new().layer(DefaultBodyLimit::max(50 * 1024 * 1024)); // 50MB for safety
-
-    router
+    // CHUNK_SIZE is 8MB, with encryption + FormData overhead ~10MB per request
+    Router::new()
         .route("/health", get(|| async { "OK" }))
         .route(
             "/receive/:token/manifest",
@@ -61,4 +59,5 @@ pub fn create_receive_router(state: &AppState) -> Router {
         .route("/styles.css", get(static_files::serve_shared_css))
         .route("/shared.js", get(static_files::serve_shared_js))
         .with_state(state.clone())
+        .layer(DefaultBodyLimit::max(20 * 1024 * 1024))
 }

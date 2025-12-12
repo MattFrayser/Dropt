@@ -16,7 +16,8 @@ pub struct ChunkStorage {
     file: File,
     path: PathBuf,
     chunks_received: HashSet<usize>,
-    disarmed: bool, // false -> delete files on drop
+    expected_chunks: usize, // Total expected chunks for validation
+    disarmed: bool,         // false -> delete files on drop
 }
 
 impl ChunkStorage {
@@ -27,25 +28,48 @@ impl ChunkStorage {
         }
 
         // Break apart file: name, ext, path
-        // name and ext are broken apart for naming like test (1).txt if duplicates
-        let stem = dest_path
-            .file_stem()
+        // Handle collision numbering properly:
+        // - "test.txt" -> "test (1).txt" -> "test (2).txt"
+
+        let filename = dest_path
+            .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("unnamed")
             .to_string();
-
-        let extension = dest_path
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|e| format!(".{}", e))
-            .unwrap_or_default();
 
         let parent_dir = dest_path
             .parent()
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| PathBuf::from("."));
 
-        let mut counter = 1;
+        // Find the first '.' to split filename from all extensions
+        let (base_name, all_extensions) = if let Some(dot_pos) = filename.find('.') {
+            (
+                filename[..dot_pos].to_string(),
+                filename[dot_pos..].to_string(),
+            )
+        } else {
+            (filename.clone(), String::new())
+        };
+
+        // Check if base_name ends with " (N)" pattern and extract N
+        let (name_without_number, mut counter) = if let Some(paren_pos) = base_name.rfind(" (") {
+            if base_name.ends_with(')') {
+                let number_str = &base_name[paren_pos + 2..base_name.len() - 1];
+                if let Ok(num) = number_str.parse::<u32>() {
+                    // Found existing number, increment from there
+                    (base_name[..paren_pos].to_string(), num + 1)
+                } else {
+                    // Has " (" but not a valid number
+                    (base_name.clone(), 1)
+                }
+            } else {
+                (base_name.clone(), 1)
+            }
+        } else {
+            // No existing number
+            (base_name.clone(), 1)
+        };
 
         loop {
             // First try open file as new
@@ -60,16 +84,25 @@ impl ChunkStorage {
                 Ok(file) => {
                     file.set_len(file_size).await?;
 
+                    // Calculate expected chunks
+                    let expected_chunks = if file_size == 0 {
+                        0
+                    } else {
+                        ((file_size + CHUNK_SIZE - 1) / CHUNK_SIZE) as usize
+                    };
+
                     return Ok(Self {
                         file,
                         path: dest_path,
                         chunks_received: HashSet::new(),
+                        expected_chunks,
                         disarmed: false,
                     });
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                     // Catch collision via error
-                    let new_name = format!("{} ({}){}", stem, counter, extension);
+                    let new_name =
+                        format!("{} ({}){}", name_without_number, counter, all_extensions);
                     dest_path = parent_dir.join(new_name);
                     counter += 1;
                 }
@@ -126,6 +159,16 @@ impl ChunkStorage {
     }
 
     pub async fn finalize(&mut self) -> Result<String> {
+        // Check for completeness before finalizing
+        let received = self.chunk_count();
+        if received < self.expected_chunks {
+            return Err(anyhow::anyhow!(
+                "Incomplete transfer: received {}/{} chunks",
+                received,
+                self.expected_chunks
+            ));
+        }
+
         self.file.flush().await?;
 
         // Calc final hash for integrity of operation
