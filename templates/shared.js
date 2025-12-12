@@ -1,10 +1,16 @@
 //==============
 // Constants
 //==============
-const CHUNK_SIZE = __CHUNK_SIZE__ // Run time injected from server
+const SERVER_CHUNK_SIZE = __CHUNK_SIZE__ // Run time injected from server
+
+// All clients use the same chunk size (8MB) to match server expectations
+const CHUNK_SIZE = SERVER_CHUNK_SIZE
+
 const MAX_MEMORY = 100 * 1024 * 1024 // 100MB
-const MAX_CONCURRENT_FILES = 1 // Parallel chunk limit (default)
-const MAX_CONCURRENT_CHUNKS  = 6;
+
+const MAX_CONCURRENT_FILES = 4
+const isHTTP2 = performance.getEntriesByType('navigation')[0]?.nextHopProtocol === 'h2';
+const MAX_CONCURRENT_CHUNKS = isHTTP2 ? 8 : 4;
 const FILE_SYSTEM_API_THRESHOLD = 100 * 1024 * 1024 // 100MB - use FileSystem API for files larger than this
 
 //============
@@ -29,13 +35,12 @@ function urlSafeBase64ToUint8Array(str) {
     return bytes
 }
 
-async function getCredentialsFromUrl() {
+async function getEncryptionKeyFromUrl(usages = ['encrypt', 'decrypt']) {
     const fragment = window.location.hash.substring(1) // remove #
     const params = new URLSearchParams(fragment)
     const keyBase64 = params.get('key')
-    const nonceBase64 = params.get('nonce')
 
-    if (!keyBase64 || !nonceBase64) {
+    if (!keyBase64) {
         throw new Error('Missing encryption key')
     }
 
@@ -44,17 +49,20 @@ async function getCredentialsFromUrl() {
 
     // base64 -> string -> byte array
     const keyData = urlSafeBase64ToUint8Array(keyBase64);
-    const nonceData = urlSafeBase64ToUint8Array(nonceBase64);
 
     const key = await crypto.subtle.importKey(
         'raw',
         keyData,
         { name: 'AES-GCM' },
         false,
-        ['encrypt', 'decrypt']
+        usages
     )
 
-    return { key, nonceBase: nonceData }
+    return { key }
+}
+
+function getTokenFromUrl() {
+    return window.location.pathname.split('/').pop()
 }
 
 function arrayBufferToBase64(buffer) {
@@ -112,19 +120,8 @@ function generateUuid() {
     });
 }
 
-function concatArrays(...arrays) {
-    const totalLength = arrays.reduce((sum, arr) => sum + arr.length, 0);
-    const result = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const arr of arrays) {
-        result.set(arr, offset);
-        offset += arr.length;
-    }
-    return result;
-}
-
 //=============
-// UI 
+// UI
 //=============
 
 // Create file item element with optional remove button
@@ -252,22 +249,21 @@ async function retryWithExponentialBackoff(asyncFn, maxRetries = 3, context = ''
 
 // Helper: Run async tasks with concurrency limit
 async function runWithConcurrency(items, asyncFn, concurrency) {
-    const results = []
-    const executing = []
+    const results = new Array(items.length)
+    let index = 0
 
-    for (const item of items) {
-        const promise = asyncFn(item).then(result => {
-            executing.splice(executing.indexOf(promise), 1)
-            return result
-        })
-
-        results.push(promise)
-        executing.push(promise)
-
-        if (executing.length >= concurrency) {
-            await Promise.race(executing)
+    async function runner() {
+        while (index < items.length) {
+            const currentIndex = index++
+            results[currentIndex] = await asyncFn(items[currentIndex])
         }
     }
 
-    return Promise.all(results)
+    // Start 'concurrency' number of runners
+    const runners = Array(Math.min(concurrency, items.length))
+        .fill()
+        .map(() => runner())
+
+    await Promise.all(runners)
+    return results
 }

@@ -171,6 +171,27 @@ h1 {
     background: #f56565;
 }
 
+/* Size warning state - shown on page load */
+.file-item.size-warning {
+    border: 2px solid #ed8936;
+    background: #fffaf0;
+}
+
+.file-item.size-warning .progress-text {
+    color: #c05621;
+    font-weight: 600;
+}
+
+/* Skipped state - distinct from error */
+.file-item.skipped .file-icon {
+    background: #ed8936;
+}
+
+.file-item.skipped .progress-text {
+    color: #c05621;
+    font-weight: 600;
+}
+
 .download-btn,
 .upload-btn {
     background: #020202;
