@@ -1,5 +1,6 @@
 use aes_gcm::{Aes256Gcm, KeyInit};
 use archdrop::crypto::types::{EncryptionKey, Nonce};
+use archdrop::server::state::TransferConfig;
 use archdrop::server::{routes, AppState, Session};
 use archdrop::transfer::manifest::Manifest;
 use axum::{
@@ -17,8 +18,15 @@ use tower::ServiceExt;
 //===============
 // Test Helpers
 //===============
-const CHUNK_SIZE: usize = archdrop::config::CHUNK_SIZE as usize;
+const CHUNK_SIZE: usize = 10 * 1024 * 1024; // 10MB
 const CLIENT_ID: &str = "test-client-123";
+
+fn default_config() -> TransferConfig {
+    TransferConfig {
+        chunk_size: CHUNK_SIZE as u64,
+        concurrency: 8,
+    }
+}
 
 fn setup_temp_dir() -> TempDir {
     TempDir::new().expect("Failed to create temp directory")
@@ -47,7 +55,8 @@ async fn create_test_send_app(
     file_paths: Vec<PathBuf>,
     key: EncryptionKey,
 ) -> (Router, Session, u64) {
-    let manifest = Manifest::new(file_paths, None)
+    let config = default_config();
+    let manifest = Manifest::new(file_paths, None, config.clone())
         .await
         .expect("Failed to create manifest");
 
@@ -59,7 +68,7 @@ async fn create_test_send_app(
 
     let session = Session::new_send(manifest, key, total_chunks);
     let (progress_sender, _) = tokio::sync::watch::channel(0.0);
-    let state = AppState::new_send(session.clone(), progress_sender);
+    let state = AppState::new_send(session.clone(), progress_sender, config);
     let app = routes::create_send_router(&state);
 
     (app, session, total_chunks)

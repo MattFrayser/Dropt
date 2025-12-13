@@ -1,7 +1,15 @@
+use archdrop::server::state::TransferConfig;
 use archdrop::server::Session;
 use archdrop::transfer::manifest::Manifest;
 use archdrop::crypto::types::EncryptionKey;
 use tempfile::TempDir;
+
+fn default_config() -> TransferConfig {
+    TransferConfig {
+        chunk_size: 10 * 1024 * 1024,
+        concurrency: 8,
+    }
+}
 
 #[tokio::test]
 async fn test_send_session_creation() {
@@ -9,9 +17,10 @@ async fn test_send_session_creation() {
     let test_file = temp_dir.path().join("test.txt");
     std::fs::write(&test_file, b"test content").unwrap();
 
-    let manifest = Manifest::new(vec![test_file], None).await.unwrap();
+    let config = default_config();
+    let manifest = Manifest::new(vec![test_file], None, config.clone()).await.unwrap();
     let key = EncryptionKey::new();
-    let total_chunks = manifest.total_chunks();
+    let total_chunks = manifest.total_chunks(config.chunk_size);
 
     let session = Session::new_send(manifest, key, total_chunks);
     let token = session.token().to_string();
@@ -153,11 +162,12 @@ async fn test_send_session_get_file() {
     std::fs::write(&test_file1, b"content1").unwrap();
     std::fs::write(&test_file2, b"content2").unwrap();
 
-    let manifest = Manifest::new(vec![test_file1, test_file2], None)
+    let config = default_config();
+    let manifest = Manifest::new(vec![test_file1, test_file2], None, config.clone())
         .await
         .unwrap();
     let key = EncryptionKey::new();
-    let total_chunks = manifest.total_chunks();
+    let total_chunks = manifest.total_chunks(config.chunk_size);
 
     let session = Session::new_send(manifest, key, total_chunks);
 
@@ -180,10 +190,11 @@ async fn test_session_modes() {
     let test_file = temp_dir.path().join("test.txt");
     std::fs::write(&test_file, b"test content").unwrap();
 
-    let manifest = Manifest::new(vec![test_file], None).await.unwrap();
+    let config = default_config();
+    let manifest = Manifest::new(vec![test_file], None, config.clone()).await.unwrap();
     let key1 = EncryptionKey::new();
     let key2 = EncryptionKey::new();
-    let total_chunks = manifest.total_chunks();
+    let total_chunks = manifest.total_chunks(config.chunk_size);
 
     // Create send session
     let send_session = Session::new_send(manifest, key1, total_chunks);

@@ -1,5 +1,6 @@
 use aes_gcm::{Aes256Gcm, KeyInit};
 use archdrop::crypto::types::{EncryptionKey, Nonce};
+use archdrop::server::state::TransferConfig;
 use archdrop::server::{routes, AppState, Session};
 use archdrop::transfer::manifest::Manifest;
 use archdrop::transfer::storage::ChunkStorage;
@@ -19,9 +20,16 @@ use tower::ServiceExt;
 //===============
 // Test Helpers
 //===============
-const CHUNK_SIZE: usize = archdrop::config::CHUNK_SIZE as usize;
+const CHUNK_SIZE: usize = 10 * 1024 * 1024; // 10MB
 const CHUNK_1MB: usize = 1024 * 1024;
 const CLIENT_ID: &str = "test-client-123";
+
+fn default_config() -> TransferConfig {
+    TransferConfig {
+        chunk_size: CHUNK_SIZE as u64,
+        concurrency: 8,
+    }
+}
 
 fn setup_temp_dir() -> TempDir {
     TempDir::new().expect("Failed to create temp directory")
@@ -30,7 +38,8 @@ fn setup_temp_dir() -> TempDir {
 fn create_test_app(output_dir: PathBuf, key: EncryptionKey) -> (Router, Session) {
     let session = Session::new_receive(output_dir, key, 0);
     let (progress_sender, _) = tokio::sync::watch::channel(0.0);
-    let state = AppState::new_receive(session.clone(), progress_sender);
+    let config = default_config();
+    let state = AppState::new_receive(session.clone(), progress_sender, config);
     let app = routes::create_receive_router(&state);
     (app, session)
 }
@@ -390,7 +399,7 @@ async fn test_race_finalize_vs_drop() {
     // Create storage with all chunks
     let file_size = 3 * CHUNK_1MB as u64;
     let storage = Arc::new(Mutex::new(
-        ChunkStorage::new(file_path.clone(), file_size)
+        ChunkStorage::new(file_path.clone(), file_size, CHUNK_1MB as u64)
             .await
             .expect("Failed to create storage"),
     ));
@@ -453,7 +462,7 @@ async fn test_dashmap_concurrent_session_access() {
     for i in 0..10 {
         let filename = format!("file{}.bin", i);
         let file_path = temp_dir.path().join(&filename);
-        let storage = ChunkStorage::new(file_path, 1024 * 1024)
+        let storage = ChunkStorage::new(file_path, 512 * 1024, 512 * 1024)
             .await
             .expect("Failed to create storage");
 
@@ -620,10 +629,11 @@ async fn test_concurrent_session_claim_attempts() {
         .await
         .expect("Failed to write test file");
 
-    let manifest = Manifest::new(vec![test_file], None)
+    let config = default_config();
+    let manifest = Manifest::new(vec![test_file], None, config.clone())
         .await
         .expect("Failed to create manifest");
-    let total_chunks = manifest.total_chunks();
+    let total_chunks = manifest.total_chunks(config.chunk_size);
     let session = Session::new_send(manifest, key, total_chunks);
     let token = session.token().to_string();
 

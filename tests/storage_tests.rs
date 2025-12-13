@@ -24,7 +24,7 @@ async fn test_store_chunk_in_order() {
     let file_path = temp_dir.path().join("test.bin");
 
     // Storage for 3MB file
-    let mut storage = ChunkStorage::new(file_path.clone(), CHUNK_3MB)
+    let mut storage = ChunkStorage::new(file_path.clone(), CHUNK_3MB, CHUNK_1MB as u64)
         .await
         .expect("Failed to create ChunkStorage");
 
@@ -59,7 +59,7 @@ async fn test_store_chunk_out_of_order() {
     let temp_dir = setup_temp_dir();
     let file_path = temp_dir.path().join("test.bin");
 
-    let mut storage = ChunkStorage::new(file_path.clone(), CHUNK_3MB)
+    let mut storage = ChunkStorage::new(file_path.clone(), CHUNK_3MB, CHUNK_1MB as u64)
         .await
         .expect("Failed to create ChunkStorage");
 
@@ -114,7 +114,7 @@ async fn test_collision_numbers_file() {
         .expect("Failed to write test file");
 
     // Try to create new storage with same name
-    let storage = ChunkStorage::new(file_path.clone(), 1024)
+    let storage = ChunkStorage::new(file_path.clone(), 1024, 512)
         .await
         .expect("Failed to create ChunkStorage");
 
@@ -144,7 +144,7 @@ async fn test_collision_increases_numbers_file() {
         .expect("Failed to write test file");
 
     // Try to create new storage with same name
-    let storage = ChunkStorage::new(file_path.clone(), 1024)
+    let storage = ChunkStorage::new(file_path.clone(), 1024, 512)
         .await
         .expect("Failed to create ChunkStorage");
 
@@ -172,7 +172,7 @@ async fn test_collision_preserves_extension() {
         .await
         .expect("Failed to write test file");
 
-    let storage = ChunkStorage::new(file_path.clone(), 1024)
+    let storage = ChunkStorage::new(file_path.clone(), 1024, 512)
         .await
         .expect("Failed to create ChunkStorage");
 
@@ -196,7 +196,7 @@ async fn test_drop_cleanup_incomplete() {
 
     {
         // Create storage and write partial data
-        let mut storage = ChunkStorage::new(file_path.clone(), CHUNK_3MB)
+        let mut storage = ChunkStorage::new(file_path.clone(), CHUNK_3MB, CHUNK_1MB as u64)
             .await
             .expect("Failed to create ChunkStorage");
         storage
@@ -224,7 +224,7 @@ async fn test_finalize_disarms_drop() {
     let file_path = temp_dir.path().join("complete.bin");
 
     let hash = {
-        let mut storage = ChunkStorage::new(file_path.clone(), CHUNK_1MB as u64)
+        let mut storage = ChunkStorage::new(file_path.clone(), CHUNK_1MB as u64, CHUNK_1MB as u64)
             .await
             .expect("Failed to create ChunkStorage");
         storage
@@ -253,7 +253,7 @@ async fn test_cleanup_explicit() {
     let temp_dir = setup_temp_dir();
     let file_path = temp_dir.path().join("test.bin");
 
-    let mut storage = ChunkStorage::new(file_path.clone(), 1024)
+    let mut storage = ChunkStorage::new(file_path.clone(), 1024, 512)
         .await
         .expect("Failed to create ChunkStorage");
 
@@ -282,7 +282,7 @@ async fn test_concurrent_chunk_writes() {
     let file_size = num_chunks * CHUNK_1MB as u64;
 
     let storage = Arc::new(Mutex::new(
-        ChunkStorage::new(file_path.clone(), file_size)
+        ChunkStorage::new(file_path.clone(), file_size, CHUNK_1MB as u64)
             .await
             .expect("Failed to create ChunkStorage"),
     ));
@@ -347,7 +347,7 @@ async fn test_finalize_incomplete_transfer_fails() {
 
     // Create storage expecting 10 chunks
     let expected_size = 10 * CHUNK_1MB as u64;
-    let mut storage = ChunkStorage::new(file_path.clone(), expected_size)
+    let mut storage = ChunkStorage::new(file_path.clone(), expected_size, CHUNK_1MB as u64)
         .await
         .expect("Failed to create ChunkStorage");
 
@@ -384,7 +384,7 @@ async fn test_empty_file_storage() {
     let file_path = temp_dir.path().join("empty.txt");
 
     // Create storage for 0-byte file
-    let mut storage = ChunkStorage::new(file_path.clone(), 0)
+    let mut storage = ChunkStorage::new(file_path.clone(), 0, CHUNK_1MB as u64)
         .await
         .expect("Failed to create ChunkStorage");
 
@@ -417,7 +417,7 @@ async fn test_chunk_boundary_exactly_1mb() {
 
     // Create file exactly 1MB (1 chunk)
     let file_size = CHUNK_1MB as u64;
-    let mut storage = ChunkStorage::new(file_path.clone(), file_size)
+    let mut storage = ChunkStorage::new(file_path.clone(), file_size, CHUNK_1MB as u64)
         .await
         .expect("Failed to create ChunkStorage");
 
@@ -464,7 +464,7 @@ async fn test_chunk_boundary_multiple_of_1mb() {
 
     // Create file exactly 3MB (3 chunks, no partial chunk)
     let file_size = 3 * CHUNK_1MB as u64;
-    let mut storage = ChunkStorage::new(file_path.clone(), file_size)
+    let mut storage = ChunkStorage::new(file_path.clone(), file_size, CHUNK_1MB as u64)
         .await
         .expect("Failed to create ChunkStorage");
 

@@ -1,6 +1,14 @@
+use archdrop::server::state::TransferConfig;
 use archdrop::transfer::manifest::Manifest;
 use base64::Engine;
 use tempfile::TempDir;
+
+fn default_config() -> TransferConfig {
+    TransferConfig {
+        chunk_size: 10 * 1024 * 1024,
+        concurrency: 8,
+    }
+}
 
 #[tokio::test]
 async fn test_manifest_single_file() {
@@ -9,7 +17,7 @@ async fn test_manifest_single_file() {
     let content = b"Hello, World!";
     std::fs::write(&test_file, content).unwrap();
 
-    let manifest = Manifest::new(vec![test_file.clone()], None)
+    let manifest = Manifest::new(vec![test_file.clone()], None, default_config())
         .await
         .expect("Manifest creation should succeed");
 
@@ -31,7 +39,7 @@ async fn test_manifest_multiple_files() {
     std::fs::write(&file2, b"content2content2").unwrap();
     std::fs::write(&file3, b"c3").unwrap();
 
-    let manifest = Manifest::new(vec![file1, file2, file3], None)
+    let manifest = Manifest::new(vec![file1, file2, file3], None, default_config())
         .await
         .expect("Manifest creation should succeed");
 
@@ -66,7 +74,7 @@ async fn test_manifest_with_subdirectory() {
     let file_in_subdir = sub_dir.join("nested.txt");
     std::fs::write(&file_in_subdir, b"nested content").unwrap();
 
-    let manifest = Manifest::new(vec![file_in_subdir.clone()], Some(temp_dir.path()))
+    let manifest = Manifest::new(vec![file_in_subdir.clone()], Some(temp_dir.path()), default_config())
         .await
         .expect("Manifest creation should succeed");
 
@@ -86,7 +94,7 @@ async fn test_manifest_relative_paths() {
     std::fs::write(&file1, b"root").unwrap();
     std::fs::write(&file2, b"nested").unwrap();
 
-    let manifest = Manifest::new(vec![file1, file2], Some(temp_dir.path()))
+    let manifest = Manifest::new(vec![file1, file2], Some(temp_dir.path()), default_config())
         .await
         .expect("Manifest creation should succeed");
 
@@ -103,7 +111,7 @@ async fn test_manifest_empty_file() {
     let empty_file = temp_dir.path().join("empty.txt");
     std::fs::write(&empty_file, b"").unwrap();
 
-    let manifest = Manifest::new(vec![empty_file], None)
+    let manifest = Manifest::new(vec![empty_file], None, default_config())
         .await
         .expect("Manifest creation should succeed");
 
@@ -116,7 +124,7 @@ async fn test_manifest_nonexistent_file_fails() {
     let temp_dir = TempDir::new().unwrap();
     let nonexistent = temp_dir.path().join("does_not_exist.txt");
 
-    let result = Manifest::new(vec![nonexistent], None).await;
+    let result = Manifest::new(vec![nonexistent], None, default_config()).await;
     assert!(result.is_err(), "Should fail for nonexistent file");
 }
 
@@ -126,7 +134,7 @@ async fn test_manifest_nonces_are_base64() {
     let test_file = temp_dir.path().join("test.txt");
     std::fs::write(&test_file, b"test").unwrap();
 
-    let manifest = Manifest::new(vec![test_file], None)
+    let manifest = Manifest::new(vec![test_file], None, default_config())
         .await
         .expect("Manifest creation should succeed");
 
