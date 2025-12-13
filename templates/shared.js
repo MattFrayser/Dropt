@@ -1,17 +1,8 @@
 //==============
 // Constants
 //==============
-const SERVER_CHUNK_SIZE = __CHUNK_SIZE__ // Run time injected from server
-
-// All clients use the same chunk size (8MB) to match server expectations
-const CHUNK_SIZE = SERVER_CHUNK_SIZE
-
 const MAX_MEMORY = 100 * 1024 * 1024 // 100MB
-
-const MAX_CONCURRENT_FILES = 4
-const isHTTP2 = performance.getEntriesByType('navigation')[0]?.nextHopProtocol === 'h2';
-const MAX_CONCURRENT_CHUNKS = isHTTP2 ? 8 : 4;
-const FILE_SYSTEM_API_THRESHOLD = 100 * 1024 * 1024 // 100MB - use FileSystem API for files larger than this
+const DEFAULT_CONCURRENT = 4
 
 //============
 // URL Helpers

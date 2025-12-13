@@ -10,18 +10,17 @@ use std::path::PathBuf;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
-use crate::config::CHUNK_SIZE;
-
 pub struct ChunkStorage {
     file: File,
     path: PathBuf,
     chunks_received: HashSet<usize>,
-    expected_chunks: usize, // Total expected chunks for validation
-    disarmed: bool,         // false -> delete files on drop
+    expected_chunks: usize,
+    disarmed: bool, // false -> delete files on drop
+    chunk_size: u64,
 }
 
 impl ChunkStorage {
-    pub async fn new(mut dest_path: PathBuf, file_size: u64) -> Result<Self> {
+    pub async fn new(mut dest_path: PathBuf, file_size: u64, chunk_size: u64) -> Result<Self> {
         // Create parent dir
         if let Some(parent) = dest_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
@@ -57,10 +56,8 @@ impl ChunkStorage {
             if base_name.ends_with(')') {
                 let number_str = &base_name[paren_pos + 2..base_name.len() - 1];
                 if let Ok(num) = number_str.parse::<u32>() {
-                    // Found existing number, increment from there
                     (base_name[..paren_pos].to_string(), num + 1)
                 } else {
-                    // Has " (" but not a valid number
                     (base_name.clone(), 1)
                 }
             } else {
@@ -88,7 +85,7 @@ impl ChunkStorage {
                     let expected_chunks = if file_size == 0 {
                         0
                     } else {
-                        ((file_size + CHUNK_SIZE - 1) / CHUNK_SIZE) as usize
+                        ((file_size + chunk_size - 1) / chunk_size) as usize
                     };
 
                     return Ok(Self {
@@ -97,6 +94,7 @@ impl ChunkStorage {
                         chunks_received: HashSet::new(),
                         expected_chunks,
                         disarmed: false,
+                        chunk_size,
                     });
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -132,7 +130,7 @@ impl ChunkStorage {
 
     pub async fn store_chunk(&mut self, chunk_index: usize, decrypted_data: &[u8]) -> Result<()> {
         // Seek positon - handles out of order arival
-        let offset = (chunk_index as u64) * CHUNK_SIZE;
+        let offset = (chunk_index as u64) * self.chunk_size;
         self.file.seek(SeekFrom::Start(offset)).await?;
 
         // Write & mark received

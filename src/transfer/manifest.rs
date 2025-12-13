@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-use crate::{crypto::types::Nonce, transfer::security};
+use crate::{crypto::types::Nonce, server::state::TransferConfig, transfer::security};
 
 // Metadata for single file
 #[derive(Serialize, Deserialize, Clone)]
@@ -20,10 +20,15 @@ pub struct FileEntry {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Manifest {
     pub files: Vec<FileEntry>,
+    pub config: TransferConfig,
 }
 
 impl Manifest {
-    pub async fn new(file_paths: Vec<PathBuf>, base_path: Option<&Path>) -> Result<Self> {
+    pub async fn new(
+        file_paths: Vec<PathBuf>,
+        base_path: Option<&Path>,
+        config: TransferConfig,
+    ) -> Result<Self> {
         let mut files = Vec::new();
 
         // determine common base, no base, use parent
@@ -62,14 +67,14 @@ impl Manifest {
             });
         }
 
-        Ok(Manifest { files })
+        Ok(Manifest { files, config })
     }
 
     /// Calculate total chunks needed for all files in manifest
-    pub fn total_chunks(&self) -> u64 {
+    pub fn total_chunks(&self, chunk_size: u64) -> u64 {
         self.files
             .iter()
-            .map(|f| (f.size + crate::config::CHUNK_SIZE - 1) / crate::config::CHUNK_SIZE)
+            .map(|f| (f.size + chunk_size - 1) / chunk_size)
             .sum()
     }
 }

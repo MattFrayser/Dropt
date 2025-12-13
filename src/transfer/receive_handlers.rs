@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::config;
 use crate::crypto::types::Nonce;
 use crate::errors::AppError;
 use crate::server::auth::{self, ClientIdParam};
@@ -65,10 +64,13 @@ pub async fn receive_manifest(
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("Invalid session type"))?;
 
+    let chunk_size = state.config.chunk_size;
+
     let mut session_total_chunks = 0;
+
     // Precreate file sessions to prevent race conditions during parallel upload
     for file in manifest.files {
-        let file_chunks = (file.size + config::CHUNK_SIZE - 1) / config::CHUNK_SIZE;
+        let file_chunks = (file.size + chunk_size - 1) / chunk_size;
         session_total_chunks += file_chunks;
 
         let file_id = security::hash_path(&file.relative_path);
@@ -83,7 +85,7 @@ pub async fn receive_manifest(
         let dest_path = destination.join(&file.relative_path);
 
         // Initialize storage (creates/truncates file) safely here in serial order
-        let storage = ChunkStorage::new(dest_path, file.size)
+        let storage = ChunkStorage::new(dest_path, file.size, chunk_size)
             .await
             .context("Failed to create storage")?;
 
@@ -103,7 +105,8 @@ pub async fn receive_manifest(
 
     Ok(Json(json!({
         "success": true,
-        "total_chunks": session_total_chunks
+        "total_chunks": session_total_chunks,
+        "config": state.config
     })))
 }
 

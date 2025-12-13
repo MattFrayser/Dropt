@@ -5,6 +5,12 @@ use tokio::sync::{watch, Mutex};
 
 use crate::{server::session::Session, transfer::storage::ChunkStorage};
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct TransferConfig {
+    pub chunk_size: u64,
+    pub concurrency: usize,
+}
+
 // State of Single file being Received
 pub struct FileReceiveState {
     pub storage: ChunkStorage,
@@ -30,21 +36,32 @@ pub struct AppState {
     pub session: Session,
     pub progress_sender: watch::Sender<f64>,
     pub transfers: TransferStorage,
+    pub config: TransferConfig,
 }
 impl AppState {
-    pub fn new_send(session: Session, progress_sender: watch::Sender<f64>) -> Self {
+    pub fn new_send(
+        session: Session,
+        progress_sender: watch::Sender<f64>,
+        config: TransferConfig,
+    ) -> Self {
         Self {
             session,
             progress_sender,
             transfers: TransferStorage::Send(Arc::new(DashMap::new())),
+            config,
         }
     }
 
-    pub fn new_receive(session: Session, progress_sender: watch::Sender<f64>) -> Self {
+    pub fn new_receive(
+        session: Session,
+        progress_sender: watch::Sender<f64>,
+        config: TransferConfig,
+    ) -> Self {
         Self {
             session,
             progress_sender,
             transfers: TransferStorage::Receive(Arc::new(DashMap::new())),
+            config,
         }
     }
 

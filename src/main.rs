@@ -1,6 +1,6 @@
 use anyhow::{ensure, Context, Result};
 use archdrop::{
-    server::{start_receive_server, start_send_server, ServerMode},
+    server::{self, ServerMode},
     transfer::manifest::Manifest,
 };
 use clap::{Parser, Subcommand};
@@ -74,19 +74,20 @@ async fn main() -> Result<()> {
 
             ensure!(!files_to_send.is_empty(), "No files to send");
 
-            // Send needs to build a manifest of file metadata
-            // to send to the reciever before download begins
-            let manifest = Manifest::new(files_to_send, None)
-                .await
-                .context("Failed to create manifest")?;
-
             let mode = if local {
                 ServerMode::Local
             } else {
                 ServerMode::Tunnel
             };
 
-            start_send_server(manifest, mode).await?;
+            // Send needs to build a manifest of file metadata
+            // to send to the reciever before download begins
+            let config = server::get_transfer_config(&mode);
+            let manifest = Manifest::new(files_to_send, None, config)
+                .await
+                .context("Failed to create manifest")?;
+
+            server::start_send_server(manifest, mode).await?;
         }
         Commands::Receive { destination, local } => {
             if !destination.exists() {
@@ -107,7 +108,7 @@ async fn main() -> Result<()> {
                 ServerMode::Tunnel
             };
 
-            start_receive_server(destination, mode)
+            server::start_receive_server(destination, mode)
                 .await
                 .context("Failed to start file receiver")?;
         }

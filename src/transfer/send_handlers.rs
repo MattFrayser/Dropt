@@ -3,12 +3,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::crypto;
 use crate::crypto::types::Nonce;
 use crate::errors::AppError;
 use crate::server::auth::{self, ClientIdParam};
 use crate::server::state::AppState;
 use crate::transfer::manifest::Manifest;
-use crate::{config, crypto};
 use anyhow::{Context, Result};
 use axum::extract::Query;
 use axum::{
@@ -79,7 +79,10 @@ pub async fn send_handler(
         .get_file(file_index)
         .ok_or_else(|| anyhow::anyhow!("Invalid file index"))?;
 
-    let encrypted_chunk = process_chunk(file_entry, chunk_index, state.session.cipher()).await?;
+    let chunk_size = state.config.chunk_size;
+
+    let encrypted_chunk =
+        process_chunk(file_entry, chunk_index, state.session.cipher(), chunk_size).await?;
 
     // Update Progress (Only first time serving this chunk)
     if !is_retry {
@@ -101,8 +104,9 @@ async fn process_chunk(
     file_entry: &crate::transfer::manifest::FileEntry,
     chunk_index: usize,
     cipher: &Arc<aes_gcm::Aes256Gcm>,
+    chunk_size: u64,
 ) -> Result<Vec<u8>> {
-    let start = chunk_index as u64 * config::CHUNK_SIZE;
+    let start = chunk_index as u64 * chunk_size;
 
     // Validate bounds
     if start >= file_entry.size {
@@ -113,7 +117,7 @@ async fn process_chunk(
         ));
     }
 
-    let end = std::cmp::min(start + config::CHUNK_SIZE, file_entry.size);
+    let end = std::cmp::min(start + chunk_size, file_entry.size);
     let chunk_len = (end - start) as usize;
 
     // Read from disk

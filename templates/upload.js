@@ -145,17 +145,18 @@ async function uploadFiles(selectedFiles) {
 
         // Send manifest first so server knows total chunks
         console.time('Manifest upload');
-        await sendManifest(token, selectedFiles);
+        const manifestResponse = await sendManifest(token, selectedFiles);
+        const transferConfig = manifestResponse.config
         console.timeEnd('Manifest upload');
 
         await runWithConcurrency(
             selectedFiles.map((file, index) => ({ file, index, fileItem: fileItems[index] })),
             async ({ file, fileItem }) => {
                 const relativePath = file.webkitRelativePath || file.name
-                
+
                 fileItem.classList.add('uploading')
                 try {
-                    await uploadFile(file, relativePath,token, key, fileItem)
+                    await uploadFile(file, relativePath,token, key, fileItem, transferConfig)
                     fileItem.classList.remove('uploading')
                     fileItem.classList.add('completed')
                 } catch (error) {
@@ -164,7 +165,7 @@ async function uploadFiles(selectedFiles) {
                     throw error
                 }
             },
-            MAX_CONCURRENT_FILES
+            DEFAULT_CONCURRENT
         )
 
         const clientId = getClientId()
@@ -180,22 +181,24 @@ async function uploadFiles(selectedFiles) {
     }
 }
 
-async function uploadFile(file, relativePath, token, key, fileItem) {
+async function uploadFile(file, relativePath, token, key, fileItem, config) {
     // each file gets its own nonce
-    const fileNonce = crypto.getRandomValues(new Uint8Array(8));
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE)
+    const chunkSize = config.chunk_size
+    const totalChunks = Math.ceil(file.size / chunkSize)
 
     console.log(`Uploading: ${relativePath} (${totalChunks} chunks)`);
     console.time(`${relativePath} - chunk 0`);
     console.time(`${relativePath} - total`);
+
+    const fileNonce = crypto.getRandomValues(new Uint8Array(8));
 
     // Track completed chunks for progress
     let completedChunks = 0
 
     // Helper function to prepare and upload a single chunk
     const prepareAndUploadChunk = async (chunkIndex) => {
-        const start = chunkIndex * CHUNK_SIZE
-        const end = Math.min(start + CHUNK_SIZE, file.size)
+        const start = chunkIndex * chunkSize
+        const end = Math.min(start + chunkSize, file.size)
         const chunkBlob = file.slice(start, end)
         const chunkData = await chunkBlob.arrayBuffer()
 
@@ -230,7 +233,7 @@ async function uploadFile(file, relativePath, token, key, fileItem) {
         await runWithConcurrency(
             chunkIndices,
             prepareAndUploadChunk,
-            MAX_CONCURRENT_CHUNKS
+            config.concurrency
         )
     }
 
@@ -246,17 +249,30 @@ async function uploadChunk(token, formData, chunkIndex, relativePath) {
     const url = `/receive/${token}/chunk?clientId=${clientId}`
 
     return await retryWithExponentialBackoff(async () => {
-        const response = await fetch(url, {
-            method: 'POST',
-            body: formData
-        })
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 30000)
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`)
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                body: formData,
+                signal: controller.signal
+            })
+
+            clearTimeout(timeout)
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`)
+            }
+
+            console.log(`✓ Chunk ${chunkIndex} of ${relativePath}`)
+        } catch (error) {
+            clearTimeout(timeout)
+            if (error.name === 'AbortError') {
+                throw new Error(`Upload timeout after 30s`)
+            }
+            throw error
         }
-        
-        console.log(`✓ Chunk ${chunkIndex} of ${relativePath}`)
-        
     }, 3, `chunk ${chunkIndex}`)
 }
 

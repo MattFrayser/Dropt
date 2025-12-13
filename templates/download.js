@@ -290,8 +290,8 @@ async function handleDownloadAction() {
     await startDownload();
 }
 
-async function downloadFile(token, fileEntry, fileItem) {
-    const downloadManager = new DownloadManager(token, cachedClientId);
+async function downloadFile(token, fileEntry, fileItem, transferConfig) {
+    const downloadManager = new DownloadManager(token, cachedClientId, transferConfig);
     await downloadManager.download(fileEntry, fileItem);
 }
 
@@ -337,6 +337,8 @@ async function startDownload() {
     let downloadedCount = 0
     let errorCount = 0
 
+    const transferConfig = cachedManifest.config
+
     try {
         // ONLY download files that fit
         await runWithConcurrency(
@@ -344,7 +346,7 @@ async function startDownload() {
             async ({ file, fileItem }) => {
                 fileItem.classList.add('downloading')
                 try {
-                    await downloadFile(cachedToken, file, fileItem)
+                    await downloadFile(cachedToken, file, fileItem, transferConfig)
                     fileItem.classList.remove('downloading')
                     fileItem.classList.add('completed')
                     downloadedCount++
@@ -355,7 +357,7 @@ async function startDownload() {
                     throw error
                 }
             },
-            MAX_CONCURRENT_FILES
+            transferConfig.concurrency
         )
 
         // Completion
@@ -381,10 +383,11 @@ async function startDownload() {
     }
 }
 class DownloadManager {
-    constructor(token, clientId) {
+    constructor(token, clientId, config) {
         this.token = token
         this.clientId = clientId
         this.config = getBrowserConfig()
+        this.transferConfig = config
     }
 
     async download(fileEntry, fileItem) {
@@ -412,7 +415,7 @@ class DownloadManager {
                 fileEntry,
                 keyData,
                 fileItem,
-                MAX_CONCURRENT_CHUNKS,
+                this.transferConfig.concurrency,
                 async (data, _) => {
                     // enforcing order, so cannot stream direct
                     await writable.write(data)
@@ -423,14 +426,14 @@ class DownloadManager {
         }
     }
     async downloadToBlob(fileEntry, keyData, fileItem) {
-        const totalChunks = Math.ceil(fileEntry.size / CHUNK_SIZE);
+        const totalChunks = Math.ceil(fileEntry.size / this.transferConfig.chunk_size);
         const chunks = new Array(totalChunks)
 
         await this.streamDownload(
             fileEntry,
             keyData,
             fileItem,
-            MAX_CONCURRENT_CHUNKS,
+            this.transferConfig.concurrency,
             async (data, index) => {
                 chunks[index] = data
             }
@@ -440,7 +443,7 @@ class DownloadManager {
     }
 
     async streamDownload(fileEntry, keyData, fileItem, concurrency, writeCallback) {
-        const totalChunks = Math.ceil(fileEntry.size / CHUNK_SIZE);
+        const totalChunks = Math.ceil(fileEntry.size / this.transferConfig.chunk_size);
 
         // Buffer for out of order
         // Buffer will never have more than allowed max chunks
@@ -491,15 +494,29 @@ class DownloadManager {
 
     async fetchAndDecrypt(fileEntry, chunkIndex, keyData) {
         const response = await retryWithExponentialBackoff(async () => {
-            const res = await fetch(
-            `/send/${this.token}/${fileEntry.index}/chunk/${chunkIndex}?clientId=${this.clientId}`
-            )
+            const controller = new AbortController()
+            const timeout = setTimeout(() => controller.abort(), 30000)
 
-            if (!res.ok) {
-                throw new Error(`HTTP ${res.status}`)
+            try {
+                const res = await fetch(
+                    `/send/${this.token}/${fileEntry.index}/chunk/${chunkIndex}?clientId=${this.clientId}`,
+                    { signal: controller.signal }
+                )
+
+                clearTimeout(timeout)
+
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`)
+                }
+
+                return res
+            } catch (error) {
+                clearTimeout(timeout)
+                if (error.name === 'AbortError') {
+                    throw new Error(`Request timeout after 30s`)
+                }
+                throw error
             }
-
-            return res
         }, 3, `download chunk ${chunkIndex}`)
 
         const encrypted = await response.arrayBuffer()
