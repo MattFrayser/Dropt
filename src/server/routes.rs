@@ -35,7 +35,7 @@ pub fn create_send_router(state: &AppState) -> Router {
 
 /// Create router for receive mode
 pub fn create_receive_router(state: &AppState) -> Router {
-    // CHUNK_SIZE is 8MB, with encryption + FormData overhead ~10MB per request
+    // CHUNK_SIZE is 10MB (local mode), with encryption + FormData overhead ~10.5MB per request
     Router::new()
         .route("/health", get(|| async { "OK" }))
         .route(
@@ -59,5 +59,5 @@ pub fn create_receive_router(state: &AppState) -> Router {
         .route("/styles.css", get(static_files::serve_shared_css))
         .route("/shared.js", get(static_files::serve_shared_js))
         .with_state(state.clone())
-        .layer(DefaultBodyLimit::max(20 * 1024 * 1024))
+        .layer(DefaultBodyLimit::max(25 * 1024 * 1024))
 }
