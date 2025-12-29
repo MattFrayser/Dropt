@@ -1,41 +1,35 @@
+use crate::common::TransferState;
 use crate::crypto::types::Nonce;
-use crate::server::state::{AppState, TransferStorage};
-use crate::server::{helpers, ServerDirection, ServerInstance};
-use crate::tunnel::CloudflareTunnel;
-use crate::ui::{output, qr};
+use crate::server::ServerInstance;
+use crate::transport::local_https::{get_local_ip, start_local_server, Protocol};
+use crate::transport::CloudflareTunnel;
+use crate::ui::tui::{generate_qr, spawn_tui};
 use anyhow::{Context, Result};
-use std::net::SocketAddr;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-enum Protocol {
-    Https,
-    Http,
-}
-pub async fn start_https(
+pub async fn start_https<S: TransferState>(
     server: ServerInstance,
-    app_state: AppState,
-    direction: ServerDirection,
+    app_state: S,
     nonce: Nonce,
 ) -> Result<u16> {
-    let service = direction.to_string();
+    let service = app_state.service_path();
 
     // Clone needed before consuming server
-    let session = server.session.clone();
     let display_name = server.display_name.clone();
     let progress_receiver = server.progress_receiver();
 
     let (port, server_handle) = start_local_server(server, Protocol::Https).await?;
 
     // Use local IP instead of localhost for network access
-    let local_ip = helpers::get_local_ip().unwrap_or_else(|_| "127.0.0.1".to_string());
+    let local_ip = get_local_ip().unwrap_or_else(|_| "127.0.0.1".to_string());
     let base_url = format!("https://{}:{}", local_ip, port);
     let url = format!(
         "{}/{}/{}#key={}&nonce={}",
         base_url,
         service,
-        session.token(),
-        session.session_key_b64(),
+        app_state.session().token(),
+        app_state.session().session_key_b64(),
         nonce.to_base64()
     );
 
@@ -48,22 +42,19 @@ pub async fn start_https(
         display_name,
         progress_receiver,
         url,
-        service,
     )
     .await?;
     Ok(port)
 }
 
-pub async fn start_tunnel(
+pub async fn start_tunnel<S: TransferState>(
     server: ServerInstance,
-    app_state: AppState,
-    direction: ServerDirection,
+    app_state: S,
     nonce: Nonce,
 ) -> Result<u16> {
-    let service = direction.to_string();
+    let service = app_state.service_path();
 
     // Clone what we need before consuming server
-    let session = server.session.clone();
     let display_name = server.display_name.clone();
     let progress_receiver = server.progress_receiver();
 
@@ -80,8 +71,8 @@ pub async fn start_tunnel(
         "{}/{}/{}#key={}&nonce={}",
         tunnel_url,
         service,
-        session.token(),
-        session.session_key_b64(),
+        app_state.session().token(),
+        app_state.session().session_key_b64(),
         nonce.to_base64()
     );
     println!("{}", url);
@@ -93,82 +84,19 @@ pub async fn start_tunnel(
         display_name,
         progress_receiver,
         url,
-        service,
     )
     .await?;
 
     Ok(port)
 }
 
-/// Utility function for building base HTTP/HTTPS sever
-async fn start_local_server(
-    server: ServerInstance,
-    protocol: Protocol,
-) -> Result<(u16, axum_server::Handle)> {
-    let spinner = output::spinner("Starting local server...");
-
-    // Bind to random port
-    let addr = SocketAddr::from(([0, 0, 0, 0], 0));
-    let listener = std::net::TcpListener::bind(addr).context("Failed to bind socket")?;
-
-    listener
-        .set_nonblocking(true)
-        .context("Failed to set listener to non-blocking mode")?;
-
-    let port = listener.local_addr()?.port();
-
-    // Spawn HTTP server in background
-    let server_handle = axum_server::Handle::new();
-    let server_handle_clone = server_handle.clone();
-
-    // HTTPS uses self signed certs
-    match protocol {
-        Protocol::Https => {
-            // Use local IP for certificate to allow network access
-            let local_ip = helpers::get_local_ip().unwrap_or_else(|_| "127.0.0.1".to_string());
-            let tls_config = helpers::generate_cert(&local_ip)
-                .await
-                .context("Failed to generate TLS certificate")?;
-            tokio::spawn(async move {
-                if let Err(e) = axum_server::from_tcp_rustls(listener, tls_config)
-                    .handle(server_handle_clone)
-                    .serve(server.app.into_make_service())
-                    .await
-                {
-                    eprintln!("Server error: {}", e);
-                }
-            });
-        }
-        Protocol::Http => {
-            tokio::spawn(async move {
-                if let Err(e) = axum_server::from_tcp(listener)
-                    .handle(server_handle_clone)
-                    .serve(server.app.into_make_service())
-                    .await
-                {
-                    eprintln!("Server error: {}", e);
-                }
-            });
-        }
-    }
-
-    let use_https = matches!(protocol, Protocol::Https);
-    helpers::wait_for_server_ready(port, 5, use_https)
-        .await
-        .context("Server failed to become ready")?;
-    output::spinner_success(&spinner, &format!("Server ready on port {}", port));
-
-    Ok((port, server_handle))
-}
-
-async fn run_session(
+async fn run_session<S: TransferState>(
     server_handle: axum_server::Handle,
-    state: AppState,
+    state: S,
     mut tunnel: Option<CloudflareTunnel>,
     display_name: String,
     progress_receiver: tokio::sync::watch::Receiver<f64>,
     url: String,
-    service: String,
 ) -> Result<()> {
     // CancellationTokens
     let root_token = CancellationToken::new();
@@ -187,12 +115,12 @@ async fn run_session(
             tui_token.cancelled().await;
         })
     } else {
-        let qr_code = qr::generate_qr(&url)?;
-        helpers::spawn_tui(
+        let qr_code = generate_qr(&url)?;
+        spawn_tui(
             progress_receiver,
             display_name,
             qr_code,
-            service == "upload",
+            state.is_receiving(),
             status_receiver,
             tui_token.clone(),
         )
@@ -240,7 +168,6 @@ async fn run_session(
             ShutdownResult::Completed
         }
         _ = shutdown_token.cancelled() => {
-            tracing::info!("Shutdown requested via Ctrl+C");
             ShutdownResult::Forced
         }
     };
@@ -277,9 +204,9 @@ enum ShutdownResult {
     Forced,
 }
 
-async fn shutdown(
+async fn shutdown<S: TransferState>(
     server_handle: axum_server::Handle,
-    state: AppState,
+    state: S,
     cancel_token: CancellationToken,
     status_sender: tokio::sync::watch::Sender<Option<String>>,
 ) -> Result<()> {
@@ -310,8 +237,8 @@ async fn shutdown(
     Ok(())
 }
 
-async fn wait_for_transfers(
-    state: &AppState,
+async fn wait_for_transfers<S: TransferState>(
+    state: &S,
     cancel_token: CancellationToken,
     status_sender: tokio::sync::watch::Sender<Option<String>>,
 ) -> ShutdownResult {
@@ -350,44 +277,6 @@ async fn wait_for_transfers(
 }
 
 /// Clean up all active sessions, triggering Drop cleanup for incomplete transfers
-async fn cleanup_sessions(state: &AppState) {
-    match &state.transfers {
-        TransferStorage::Send(sessions) => {
-            let count = sessions.len();
-            if count > 0 {
-                tracing::info!("Cleaning up {} send session(s)", count);
-            }
-            sessions.clear();
-        }
-        TransferStorage::Receive(sessions) => {
-            let count = sessions.len();
-            if count == 0 {
-                return;
-            }
-            tracing::info!("Cleaning up {} receive session(s)", count);
-
-            // Collect keys first. allows safe iteration and removal.
-            let keys: Vec<String> = sessions.iter().map(|entry| entry.key().clone()).collect();
-
-            // Drain sessions by taking ownership
-            let cleanup_tasks: Vec<_> = keys
-                .into_iter()
-                // take ownership FileReceiveState value
-                .filter_map(|key| sessions.remove(&key))
-                .map(|(_key, file_state_mutex)| {
-                    // Spawn async cleanup operation task for each
-                    tokio::spawn(async move {
-                        let mut state = file_state_mutex.lock().await;
-                        // Uses updated signature (takes &mut self)
-                        if let Err(e) = state.storage.cleanup().await {
-                            tracing::error!("Error during async cleanup: {}", e);
-                        }
-                    })
-                })
-                .collect();
-
-            futures::future::join_all(cleanup_tasks).await;
-        }
-    }
-    tracing::debug!("Session cleanup complete");
+async fn cleanup_sessions<S: TransferState>(state: &S) {
+    state.cleanup().await;
 }
