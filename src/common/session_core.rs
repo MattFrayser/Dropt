@@ -19,14 +19,14 @@ pub enum SessionState {
 
 /// Shared session infrastructure
 /// For cypto and auth
-pub struct SessionImpl {
+pub struct Session {
     token: String,
     session_key: EncryptionKey,
     cipher: Arc<Aes256Gcm>,
     state: Arc<RwLock<SessionState>>, // RwLock inside Arc for concurrent safe access
 }
 
-impl SessionImpl {
+impl Session {
     pub fn new(session_key: EncryptionKey) -> Self {
         let token = Uuid::new_v4().to_string();
 
@@ -158,12 +158,23 @@ impl SessionImpl {
         *state = SessionState::Completed;
         true
     }
+
+    pub fn is_completed(&self) -> bool {
+        let state = match self.state.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::error!("Session lock poisoned during is_completed check, recovering");
+                poisoned.into_inner()
+            }
+        };
+        matches!(&*state, SessionState::Completed)
+    }
 }
 
 // AppState holds session and AppState needs to be cloned
-// SessionImpl holds thread shared resources,
+// Session holds thread shared resources,
 // Need to make custom shallow copy,
-impl Clone for SessionImpl {
+impl Clone for Session {
     fn clone(&self) -> Self {
         Self {
             token: self.token.clone(),
@@ -174,35 +185,3 @@ impl Clone for SessionImpl {
     }
 }
 
-// Implement the Session trait for SessionImpl
-use crate::common::session_trait::Session;
-
-impl Session for SessionImpl {
-    fn token(&self) -> &str {
-        &self.token
-    }
-
-    fn session_key(&self) -> &EncryptionKey {
-        &self.session_key
-    }
-
-    fn cipher(&self) -> &Arc<Aes256Gcm> {
-        &self.cipher
-    }
-
-    fn session_key_b64(&self) -> String {
-        self.session_key.to_base64()
-    }
-
-    fn claim(&self, token: &str, client_id: &str) -> bool {
-        SessionImpl::claim(self, token, client_id)
-    }
-
-    fn is_active(&self, token: &str, client_id: &str) -> bool {
-        SessionImpl::is_active(self, token, client_id)
-    }
-
-    fn complete(&self, token: &str, client_id: &str) -> bool {
-        SessionImpl::complete(self, token, client_id)
-    }
-}
