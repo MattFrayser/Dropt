@@ -1,9 +1,11 @@
-use crate::common::config::TransferConfig;
+use crate::common::config::TransferSettings;
 use crate::common::{Session, TransferState};
+use crate::crypto::types::EncryptionKey;
 use crate::receive::storage::ChunkStorage;
-use crate::receive::session::ReceiveSession;
 use crate::server::progress::ProgressTracker;
 use dashmap::DashMap;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -14,24 +16,69 @@ pub struct FileReceiveState {
     pub nonce: String,
     pub relative_path: String,
     pub file_size: u64,
+    pub file_index: usize,
 }
 
 /// Receive-specific application state
-#[derive(Clone)]
 pub struct ReceiveAppState {
-    pub session: ReceiveSession,
-    pub progress: ProgressTracker,
-    pub receive_sessions: Arc<DashMap<String, Arc<Mutex<FileReceiveState>>>>, // ✅ Concrete type
-    pub config: TransferConfig,
+    pub session: Session,
+    pub destination: PathBuf,
+    pub progress: Arc<ProgressTracker>,
+    pub receive_sessions: Arc<DashMap<String, Arc<Mutex<FileReceiveState>>>>,
+    pub config: TransferSettings,
+    total_chunks: AtomicU64,
+    chunks_received: Arc<AtomicU64>,
 }
 
 impl ReceiveAppState {
-    pub fn new(session: ReceiveSession, progress: ProgressTracker, config: TransferConfig) -> Self {
+    pub fn new(
+        session_key: EncryptionKey,
+        destination: PathBuf,
+        progress: Arc<ProgressTracker>,
+        config: TransferSettings,
+    ) -> Self {
         Self {
-            session,
+            session: Session::new(session_key),
+            destination,
             progress,
             receive_sessions: Arc::new(DashMap::new()),
             config,
+            total_chunks: AtomicU64::new(0),
+            chunks_received: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    pub fn destination(&self) -> &PathBuf {
+        &self.destination
+    }
+
+    pub fn set_total_chunks(&self, total: u64) {
+        self.total_chunks.store(total, Ordering::SeqCst);
+    }
+
+    pub fn increment_received_chunk(&self) -> (u64, u64) {
+        let chunks_received = self.chunks_received.fetch_add(1, Ordering::SeqCst) + 1;
+        let total = self.total_chunks.load(Ordering::SeqCst);
+        (chunks_received, total)
+    }
+
+    pub fn get_progress(&self) -> (u64, u64) {
+        let received = self.chunks_received.load(Ordering::SeqCst);
+        let total = self.total_chunks.load(Ordering::SeqCst);
+        (received, total)
+    }
+}
+
+impl Clone for ReceiveAppState {
+    fn clone(&self) -> Self {
+        Self {
+            session: self.session.clone(),
+            destination: self.destination.clone(),
+            progress: self.progress.clone(),
+            receive_sessions: self.receive_sessions.clone(),
+            config: self.config.clone(),
+            total_chunks: AtomicU64::new(self.total_chunks.load(Ordering::SeqCst)),
+            chunks_received: self.chunks_received.clone(),
         }
     }
 }
@@ -71,7 +118,7 @@ impl TransferState for ReceiveAppState {
         futures::future::join_all(cleanup_tasks).await;
     }
 
-    fn session(&self) -> &dyn Session {
+    fn session(&self) -> &Session {
         &self.session
     }
 
