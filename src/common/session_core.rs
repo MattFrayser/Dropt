@@ -1,6 +1,5 @@
 use crate::crypto::types::EncryptionKey;
-use aes_gcm::{Aes256Gcm, KeyInit};
-use sha2::digest::generic_array::GenericArray;
+use aws_lc_rs::aead::{LessSafeKey, UnboundKey, AES_256_GCM};
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
@@ -22,7 +21,7 @@ pub enum SessionState {
 pub struct Session {
     token: String,
     session_key: EncryptionKey,
-    cipher: Arc<Aes256Gcm>,
+    cipher: Arc<LessSafeKey>,
     state: Arc<RwLock<SessionState>>, // RwLock inside Arc for concurrent safe access
 }
 
@@ -30,9 +29,9 @@ impl Session {
     pub fn new(session_key: EncryptionKey) -> Self {
         let token = Uuid::new_v4().to_string();
 
-        let cipher = Arc::new(Aes256Gcm::new(GenericArray::from_slice(
-            session_key.as_bytes(),
-        )));
+        let unbound = UnboundKey::new(&AES_256_GCM, session_key.as_bytes())
+            .expect("valid 32-byte AES-256 key");
+        let cipher = Arc::new(LessSafeKey::new(unbound));
 
         tracing::debug!("Created new session with token: '{}'", token);
 
@@ -52,7 +51,7 @@ impl Session {
         &self.session_key
     }
 
-    pub fn cipher(&self) -> &Arc<Aes256Gcm> {
+    pub fn cipher(&self) -> &Arc<LessSafeKey> {
         &self.cipher
     }
 

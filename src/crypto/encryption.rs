@@ -6,34 +6,35 @@
 //!
 
 use crate::crypto::types::Nonce;
-use aes_gcm::{aead::Aead, Aes256Gcm};
 use anyhow::Result;
-use sha2::digest::generic_array::GenericArray;
+use aws_lc_rs::aead::{Aad, LessSafeKey, Nonce as AeadNonce};
 
-pub fn decrypt_chunk_at_position(
-    cipher: &Aes256Gcm,
+pub fn encrypt_chunk_in_place(
+    key: &LessSafeKey,
     nonce_base: &Nonce,
-    encrypted_data: &[u8],
+    buffer: &mut Vec<u8>,
     counter: u32,
-) -> Result<Vec<u8>> {
+) -> Result<()> {
     let full_nonce = nonce_base.with_counter(counter);
-    let nonce_array = GenericArray::from_slice(&full_nonce);
+    let nonce = AeadNonce::assume_unique_for_key(full_nonce);
 
-    cipher
-        .decrypt(nonce_array, encrypted_data)
-        .map_err(|e| anyhow::anyhow!("Decryption failed: {:?}", e))
+    key.seal_in_place_append_tag(nonce, Aad::empty(), buffer)
+        .map_err(|e| anyhow::anyhow!("Encryption failed: {:?}", e))
 }
 
-pub fn encrypt_chunk_at_position(
-    cipher: &Aes256Gcm,
+pub fn decrypt_chunk_in_place(
+    key: &LessSafeKey,
     nonce_base: &Nonce,
-    plaintext: &[u8],
+    buffer: &mut Vec<u8>,
     counter: u32,
-) -> Result<Vec<u8>> {
+) -> Result<()> {
     let full_nonce = nonce_base.with_counter(counter);
-    let nonce_array = GenericArray::from_slice(&full_nonce);
+    let nonce = AeadNonce::assume_unique_for_key(full_nonce);
 
-    cipher
-        .encrypt(nonce_array, plaintext)
-        .map_err(|e| anyhow::anyhow!("Encryption failed: {:?}", e))
+    let plaintext_len = key
+        .open_in_place(nonce, Aad::empty(), buffer)
+        .map_err(|e| anyhow::anyhow!("Decryption failed: {:?}", e))?
+        .len();
+    buffer.truncate(plaintext_len);
+    Ok(())
 }

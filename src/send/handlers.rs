@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::common::{AppError, Manifest};
 use crate::crypto::{self, Nonce};
+use crate::send::buffer_pool::BufferPool;
 use crate::send::file_handle::SendFileHandle;
 use crate::server::auth::{self, ClientIdParam};
 use anyhow::{Context, Result};
@@ -12,6 +13,7 @@ use axum::{
     http::Response,
     Json,
 };
+use bytes::Bytes;
 use reqwest::header;
 
 use super::SendAppState;
@@ -82,30 +84,32 @@ pub async fn send_handler(
         .value()
         .clone();
 
-    let encrypted_chunk = process_chunk(
+    let encrypted_bytes = process_chunk(
         &file_handle,
         chunk_index,
         state.session.cipher(),
         chunk_size,
         file_entry.size,
         &file_entry.nonce,
+        &state.buffer_pool,
     )
     .await?;
 
     Ok(Response::builder()
         .header(header::CONTENT_TYPE, "application/octet-stream")
-        .body(Body::from(encrypted_chunk))
+        .body(Body::from(encrypted_bytes))
         .context("build response")?)
 }
 
 async fn process_chunk(
     file_handle: &Arc<SendFileHandle>,
     chunk_index: usize,
-    cipher: &Arc<aes_gcm::Aes256Gcm>,
+    cipher: &Arc<aws_lc_rs::aead::LessSafeKey>,
     chunk_size: u64,
     file_size: u64,
     nonce_str: &str,
-) -> Result<Vec<u8>> {
+    pool: &Arc<BufferPool>,
+) -> Result<Bytes> {
     let start = chunk_index as u64 * chunk_size;
 
     // Validate bounds
@@ -120,22 +124,20 @@ async fn process_chunk(
     let end = std::cmp::min(start + chunk_size, file_size);
     let chunk_len = (end - start) as usize;
 
-    // Read from disk using persistent handle
     let file_handle = file_handle.clone();
-    let buffer = tokio::task::spawn_blocking(move || file_handle.read_chunk(start, chunk_len))
-        .await
-        .context("File read task panicked")??;
-
-    // Prepare data to move into the closure
     let cipher = cipher.clone();
     let nonce_str = nonce_str.to_string();
+    let pool = pool.clone();
 
-    // Offload encryption to a blocking thread
-    // This prevents AES-GCM from stalling the async runtime
+    // Read + encrypt in a single blocking task to avoid double thread-pool scheduling
     tokio::task::spawn_blocking(move || {
+        let mut buffer = pool.take();
+        file_handle.read_chunk(start, chunk_len, &mut buffer)?;
         let file_nonce = Nonce::from_base64(&nonce_str)?;
-        crypto::encrypt_chunk_at_position(&cipher, &file_nonce, &buffer, chunk_index as u32)
-            .context("Encryption failed")
+        crypto::encrypt_chunk_in_place(&cipher, &file_nonce, &mut buffer, chunk_index as u32)
+            .context("Encryption failed")?;
+        // Wrap in Bytes that returns the buffer to the pool on drop
+        Ok(pool.wrap(buffer))
     })
     .await?
 }

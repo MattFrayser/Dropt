@@ -4,45 +4,50 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+aws-lc-rs = "1"
+anyhow = "1.0"
+async-trait = "0.1"
 axum = { version = "0.7", features = ["multipart"] }
-tokio = { version = "1", features = ["full"] }
-uuid = { version = "1.6", features = ["v4"] }
-clap = { version = "4.4", features = ["derive"] }
-chrono = "0.4"
-aes-gcm = { version = "0.10", features = ["stream"] } 
-base64 = "0.21"
-rand = "0.8"
-futures = "0.3"
-sha2 = "0.10.9"
-qrcode = "0.13"
-ratatui = "0.26"
-crossterm = "0.27"
-hostname = "0.4"
 axum-server = { version = "0.7", features = ["tls-rustls"] }
+axum_typed_multipart = "0.13"
+base64 = "0.21"
+bytes = "1"
+bore-cli = "0.6.0"
+clap = { version = "4.4", features = ["derive"] }
+console = "0.15"
+crossterm = "0.27"
+dashmap = "6.0"
+directories = "6.0"
+figment = { version = "0.10", features = ["toml", "env"] }
+futures = "0.3"
+hex = "0.4"
+indicatif = "0.17"
+positioned-io = "0.3"
+qrcode = "0.13"
+ratatui = "0.27"
+tui-big-text = "0.5"
 rcgen = "0.12"
 reqwest = { version = "0.12", features = ["json"] }
-zip = "2.2"
-walkdir = "2.5"
-indicatif = "0.17"
-console = "0.15"
-anyhow = "1.0"
-thiserror = "1.0"
-sysinfo = "0.30"
+rand = "0.8"
 serde_json = "1.0"
 serde = "1.0"
-tempfile = "3.23.0"
-hex = "0.4.3"
-dashmap = "6.0"
-positioned-io = "0.3"
+secrecy = "0.8"
+sha2 = "0.10.9"
+sysinfo = "0.30"
+tailscale-localapi = "0.4.2"
+thiserror = "1.0"
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+tower-http = { version = "0.6", features = ["cors"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-tokio-util = "0.7"
-axum_typed_multipart = "0.13"
-tower-http = { version = "0.6", features = ["cors"] }
-async-trait = "0.1.89"
+uuid = { version = "1.6", features = ["v4"] }
+walkdir = "2.5"
+console-subscriber = "0.4"
 
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["json", "multipart"] }
 tower = "0.5"
 http-body-util = "0.1"
+tempfile = "3"
 
