@@ -1,34 +1,39 @@
-use aes_gcm::{Aes256Gcm, KeyInit};
-use archdrop::crypto::{decrypt_chunk_at_position, encrypt_chunk_at_position};
+use archdrop::crypto::{decrypt_chunk_in_place, encrypt_chunk_in_place};
 use archdrop::crypto::types::{EncryptionKey, Nonce};
-use sha2::digest::generic_array::GenericArray;
+use aws_lc_rs::aead::{LessSafeKey, UnboundKey, AES_256_GCM};
+
+fn make_key(key: &EncryptionKey) -> LessSafeKey {
+    let unbound = UnboundKey::new(&AES_256_GCM, key.as_bytes()).expect("valid key");
+    LessSafeKey::new(unbound)
+}
 
 #[test]
 fn test_encrypt_decrypt_chunk() {
     let key = EncryptionKey::new();
     let nonce = Nonce::new();
-    let cipher = Aes256Gcm::new(GenericArray::from_slice(key.as_bytes()));
+    let cipher = make_key(&key);
 
     let plaintext = b"Hello, ArchDrop!";
     let counter = 0;
 
-    // Encrypt
-    let encrypted = encrypt_chunk_at_position(&cipher, &nonce, plaintext, counter)
+    // Encrypt in place
+    let mut buffer = plaintext.to_vec();
+    encrypt_chunk_in_place(&cipher, &nonce, &mut buffer, counter)
         .expect("Encryption should succeed");
 
     assert_ne!(
         plaintext.to_vec(),
-        encrypted,
+        buffer,
         "Encrypted data should differ"
     );
 
-    // Decrypt
-    let decrypted = decrypt_chunk_at_position(&cipher, &nonce, &encrypted, counter)
+    // Decrypt in place
+    decrypt_chunk_in_place(&cipher, &nonce, &mut buffer, counter)
         .expect("Decryption should succeed");
 
     assert_eq!(
         plaintext.to_vec(),
-        decrypted,
+        buffer,
         "Decrypted should match original"
     );
 }
@@ -37,23 +42,25 @@ fn test_encrypt_decrypt_chunk() {
 fn test_encrypt_multiple_chunks() {
     let key = EncryptionKey::new();
     let nonce = Nonce::new();
-    let cipher = Aes256Gcm::new(GenericArray::from_slice(key.as_bytes()));
+    let cipher = make_key(&key);
 
-    let chunks = vec![b"chunk1", b"chunk2", b"chunk3"];
+    let chunks: [&[u8]; 3] = [b"chunk1", b"chunk2", b"chunk3"];
     let mut encrypted_chunks = Vec::new();
 
     // Encrypt multiple chunks with different counters
     for (i, chunk) in chunks.iter().enumerate() {
-        let encrypted = encrypt_chunk_at_position(&cipher, &nonce, *chunk, i as u32)
+        let mut buffer = chunk.to_vec();
+        encrypt_chunk_in_place(&cipher, &nonce, &mut buffer, i as u32)
             .expect("Encryption should succeed");
-        encrypted_chunks.push(encrypted);
+        encrypted_chunks.push(buffer);
     }
 
     // Decrypt and verify
     for (i, (original, encrypted)) in chunks.iter().zip(encrypted_chunks.iter()).enumerate() {
-        let decrypted = decrypt_chunk_at_position(&cipher, &nonce, encrypted, i as u32)
+        let mut buffer = encrypted.clone();
+        decrypt_chunk_in_place(&cipher, &nonce, &mut buffer, i as u32)
             .expect("Decryption should succeed");
-        assert_eq!(original.to_vec(), decrypted);
+        assert_eq!(original.to_vec(), buffer);
     }
 }
 
@@ -63,16 +70,17 @@ fn test_wrong_key_fails_decryption() {
     let key2 = EncryptionKey::new();
     let nonce = Nonce::new();
 
-    let cipher1 = Aes256Gcm::new(GenericArray::from_slice(key1.as_bytes()));
-    let cipher2 = Aes256Gcm::new(GenericArray::from_slice(key2.as_bytes()));
+    let cipher1 = make_key(&key1);
+    let cipher2 = make_key(&key2);
 
     let plaintext = b"secret data";
 
-    let encrypted = encrypt_chunk_at_position(&cipher1, &nonce, plaintext, 0)
+    let mut buffer = plaintext.to_vec();
+    encrypt_chunk_in_place(&cipher1, &nonce, &mut buffer, 0)
         .expect("Encryption should succeed");
 
     // Try to decrypt with wrong key
-    let result = decrypt_chunk_at_position(&cipher2, &nonce, &encrypted, 0);
+    let result = decrypt_chunk_in_place(&cipher2, &nonce, &mut buffer, 0);
     assert!(result.is_err(), "Decryption with wrong key should fail");
 }
 
@@ -80,15 +88,16 @@ fn test_wrong_key_fails_decryption() {
 fn test_wrong_counter_fails_decryption() {
     let key = EncryptionKey::new();
     let nonce = Nonce::new();
-    let cipher = Aes256Gcm::new(GenericArray::from_slice(key.as_bytes()));
+    let cipher = make_key(&key);
 
     let plaintext = b"test data";
 
-    let encrypted = encrypt_chunk_at_position(&cipher, &nonce, plaintext, 5)
+    let mut buffer = plaintext.to_vec();
+    encrypt_chunk_in_place(&cipher, &nonce, &mut buffer, 5)
         .expect("Encryption should succeed");
 
     // Try to decrypt with wrong counter
-    let result = decrypt_chunk_at_position(&cipher, &nonce, &encrypted, 10);
+    let result = decrypt_chunk_in_place(&cipher, &nonce, &mut buffer, 10);
     assert!(result.is_err(), "Decryption with wrong counter should fail");
 }
 

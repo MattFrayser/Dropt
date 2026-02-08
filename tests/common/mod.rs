@@ -1,14 +1,15 @@
-use aes_gcm::{Aes256Gcm, KeyInit};
-use archdrop::common::TransferConfig;
+#![allow(dead_code)]
+
+use archdrop::common::TransferSettings;
 use archdrop::crypto::types::EncryptionKey;
-use sha2::digest::generic_array::GenericArray;
+use aws_lc_rs::aead::{LessSafeKey, UnboundKey, AES_256_GCM};
 use tempfile::TempDir;
 
 pub const CHUNK_SIZE: usize = 10 * 1024 * 1024; // 10MB
 pub const CLIENT_ID: &str = "test-client-123";
 
-pub fn default_config() -> TransferConfig {
-    TransferConfig {
+pub fn default_config() -> TransferSettings {
+    TransferSettings {
         chunk_size: CHUNK_SIZE as u64,
         concurrency: 8,
     }
@@ -18,6 +19,8 @@ pub fn setup_temp_dir() -> TempDir {
     TempDir::new().expect("Failed to create temp directory")
 }
 
-pub fn create_cipher(key: &EncryptionKey) -> Aes256Gcm {
-    Aes256Gcm::new(GenericArray::from_slice(key.as_bytes()))
+pub fn create_cipher(key: &EncryptionKey) -> LessSafeKey {
+    let unbound = UnboundKey::new(&AES_256_GCM, key.as_bytes())
+        .expect("valid 32-byte AES-256 key");
+    LessSafeKey::new(unbound)
 }
