@@ -1,7 +1,7 @@
 use anyhow::{ensure, Context, Result};
 use archdrop::{
-    common::Manifest,
-    server::{self, ServerMode},
+    common::{config, config_commands, CliArgs, Manifest},
+    server,
 };
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -10,8 +10,8 @@ use walkdir::WalkDir;
 
 // Clap for CLI w/ arg parsing
 #[derive(Parser)]
-#[command(name = "archdrop")] // name in --help
-#[command(about = "Secure file transfer")] // desc in --help
+#[command(name = "archdrop")]
+#[command(about = "Secure file transfer")]
 struct Cli {
     // subcommands
     #[command(subcommand)]
@@ -19,48 +19,72 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+enum ConfigAction {
+    Path,
+    Show,
+    Edit {
+        #[arg(long, help = "Do not prompt to retry after validation errors")]
+        no_retry: bool,
+    },
+    Reset {
+        #[arg(long, short = 'y', help = "Skip confirmation prompt")]
+        yes: bool,
+    },
+}
+
+#[derive(Subcommand)]
 enum Commands {
     Send {
-        #[arg(help = "Path to file to send")]
-        paths: Vec<PathBuf>,
+        #[arg(required = true, help = "Files or directories to send")]
+        path: Vec<PathBuf>,
 
-        #[arg(long, help = "Use HTTPS with self-signed cert. (Faster)")]
-        local: bool,
+        #[command(flatten)]
+        args: CliArgs,
     },
     Receive {
         #[arg(default_value = ".", help = "Destination directory")]
         destination: PathBuf,
 
-        #[arg(long)]
-        local: bool,
+        #[command(flatten)]
+        args: CliArgs,
+    },
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
     },
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // log tracing, default to info
-    // Suppress debug logs from dependencies (reqwest, hyper, etc)
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info,reqwest=warn,hyper_util=warn")),
-        )
-        .init();
+    if std::env::var("TOKIO_CONSOLE").is_ok() {
+        eprintln!("tokio-console enabled, listening on 127.0.0.1:6669");
+        console_subscriber::init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| EnvFilter::new("info,reqwest=warn,hyper_util=warn")),
+            )
+            .init();
+    }
+
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Send { paths, local } => {
+        Commands::Send { path, args } => {
+            let config = config::load_config(&args)?;
+
             // collect all files
             let mut files_to_send = Vec::new();
 
-            for path in paths {
+            for file in path {
                 // fail fast on no file
-                ensure!(path.exists(), "File not found: {}", path.display());
+                ensure!(file.exists(), "File not found: {}", file.display());
 
-                if path.is_dir() {
+                if file.is_dir() {
                     // Add files in dir recursively
                     // handle nested directories
-                    for entry in WalkDir::new(&path)
+                    for entry in WalkDir::new(&file)
                         .into_iter()
                         .filter_map(|e| e.ok())
                         .filter(|e| e.path().is_file())
@@ -68,28 +92,25 @@ async fn main() -> Result<()> {
                         files_to_send.push(entry.path().to_path_buf());
                     }
                 } else {
-                    files_to_send.push(path) // single file
+                    files_to_send.push(file) // single file
                 }
             }
 
             ensure!(!files_to_send.is_empty(), "No files to send");
 
-            let mode = if local {
-                ServerMode::Local
-            } else {
-                ServerMode::Tunnel
-            };
-
             // Send needs to build a manifest of file metadata
-            // to send to the reciever before download begins
-            let config = server::get_transfer_config(&mode);
-            let manifest = Manifest::new(files_to_send, None, config)
+            // to send to the receiver before download begins
+            let transport = args.via.unwrap_or(config.default_transport);
+            let transfer_settings = config.transfer_settings(transport);
+            let manifest = Manifest::new(files_to_send, None, transfer_settings)
                 .await
                 .context("Failed to create manifest")?;
 
-            server::start_send_server(manifest, mode).await?;
+            server::start_send_server(manifest, transport, &config).await?;
         }
-        Commands::Receive { destination, local } => {
+        Commands::Receive { destination, args } => {
+            let config = config::load_config(&args)?;
+
             if !destination.exists() {
                 tokio::fs::create_dir_all(&destination)
                     .await
@@ -102,16 +123,26 @@ async fn main() -> Result<()> {
                 destination.display()
             );
 
-            let mode = if local {
-                ServerMode::Local
-            } else {
-                ServerMode::Tunnel
-            };
+            let transport = args.via.unwrap_or(config.default_transport);
 
-            server::start_receive_server(destination, mode)
+            server::start_receive_server(destination, transport, &config)
                 .await
                 .context("Failed to start file receiver")?;
         }
+        Commands::Config { action } => match action {
+            ConfigAction::Path => {
+                config_commands::run_config_path()?;
+            }
+            ConfigAction::Show => {
+                config_commands::run_config_show()?;
+            }
+            ConfigAction::Edit { no_retry } => {
+                let _ = config_commands::run_config_edit(no_retry)?;
+            }
+            ConfigAction::Reset { yes } => {
+                let _ = config_commands::run_config_reset(yes)?;
+            }
+        },
     }
     Ok(())
 }
