@@ -43,7 +43,7 @@ impl ChunkStorage {
         let (base_name, all_extensions) = if let Some(dot_pos) = filename.find('.') {
             // hidden files starting with '.' should keep the dot in base_name (ex: .gitignore)
             if dot_pos == 0 {
-                (filename.clone(), String::new())
+                (filename, String::new())
             } else {
                 (
                     filename[..dot_pos].to_string(),
@@ -51,7 +51,7 @@ impl ChunkStorage {
                 )
             }
         } else {
-            (filename.clone(), String::new())
+            (filename, String::new())
         };
 
         // Check if base_name ends with " (N)" pattern and extract N
@@ -62,14 +62,14 @@ impl ChunkStorage {
                 if let Ok(num) = number_str.parse::<u32>() {
                     (base_name[..paren_pos].to_string(), num + 1)
                 } else {
-                    (base_name.clone(), 1)
+                    (base_name, 1)
                 }
             } else {
-                (base_name.clone(), 1)
+                (base_name, 1)
             }
         } else {
             // No existing number
-            (base_name.clone(), 1)
+            (base_name, 1)
         };
 
         loop {
