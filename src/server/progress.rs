@@ -3,6 +3,8 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
+use crate::ui::tui::{FileProgress, FileStatus, TransferProgress};
+
 struct FileState {
     names: Vec<String>,
     total_chunks: Vec<u64>,
