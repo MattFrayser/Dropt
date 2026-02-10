@@ -59,7 +59,6 @@ impl LayoutConfig {
 /// Render and poll interval
 const RENDER_INTERVAL: Duration = Duration::from_millis(50);
 
-/// Binsider-inspired golden accent color for titles and highlights
 const ACCENT: Color = Color::Rgb(248, 190, 117);
 
 /// Mutable state that changes during transfer

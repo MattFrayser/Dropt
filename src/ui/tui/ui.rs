@@ -7,7 +7,6 @@ pub fn generate_qr(url: &str) -> Result<String> {
 
     Ok(code
         .render::<unicode::Dense1x2>()
-        // colors are inverted for better visability in terminal
         .dark_color(unicode::Dense1x2::Light)
         .light_color(unicode::Dense1x2::Dark)
         .quiet_zone(false)
