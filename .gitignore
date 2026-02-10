@@ -10,9 +10,5 @@ docs/
 .worktrees/
 
 perf/snapshots/
-perf.data
-perf.data.old
-flamegraph.svg
-profile.json.gz
-performance_analysis.md
-overview.md
+perf/benchmarks/
+perf/
