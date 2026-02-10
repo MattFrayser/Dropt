@@ -1,5 +1,5 @@
-use archdrop::crypto::{decrypt_chunk_in_place, encrypt_chunk_in_place};
 use archdrop::crypto::types::{EncryptionKey, Nonce};
+use archdrop::crypto::{decrypt_chunk_in_place, encrypt_chunk_in_place};
 use aws_lc_rs::aead::{LessSafeKey, UnboundKey, AES_256_GCM};
 
 fn make_key(key: &EncryptionKey) -> LessSafeKey {
@@ -21,11 +21,7 @@ fn test_encrypt_decrypt_chunk() {
     encrypt_chunk_in_place(&cipher, &nonce, &mut buffer, counter)
         .expect("Encryption should succeed");
 
-    assert_ne!(
-        plaintext.to_vec(),
-        buffer,
-        "Encrypted data should differ"
-    );
+    assert_ne!(plaintext.to_vec(), buffer, "Encrypted data should differ");
 
     // Decrypt in place
     decrypt_chunk_in_place(&cipher, &nonce, &mut buffer, counter)
@@ -76,8 +72,7 @@ fn test_wrong_key_fails_decryption() {
     let plaintext = b"secret data";
 
     let mut buffer = plaintext.to_vec();
-    encrypt_chunk_in_place(&cipher1, &nonce, &mut buffer, 0)
-        .expect("Encryption should succeed");
+    encrypt_chunk_in_place(&cipher1, &nonce, &mut buffer, 0).expect("Encryption should succeed");
 
     // Try to decrypt with wrong key
     let result = decrypt_chunk_in_place(&cipher2, &nonce, &mut buffer, 0);
@@ -93,8 +88,7 @@ fn test_wrong_counter_fails_decryption() {
     let plaintext = b"test data";
 
     let mut buffer = plaintext.to_vec();
-    encrypt_chunk_in_place(&cipher, &nonce, &mut buffer, 5)
-        .expect("Encryption should succeed");
+    encrypt_chunk_in_place(&cipher, &nonce, &mut buffer, 5).expect("Encryption should succeed");
 
     // Try to decrypt with wrong counter
     let result = decrypt_chunk_in_place(&cipher, &nonce, &mut buffer, 10);

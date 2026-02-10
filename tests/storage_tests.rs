@@ -1,8 +1,7 @@
 mod common;
 
-use common::setup_temp_dir;
 use archdrop::receive::ChunkStorage;
-use tempfile::TempDir;
+use common::setup_temp_dir;
 
 //===============
 // Test Helpers
@@ -210,7 +209,10 @@ async fn test_collision_with_hidden_file() {
     assert_eq!(actual_name, ".gitignore (1)");
 
     // Ensure no leading space (the bug we fixed)
-    assert!(!actual_name.starts_with(' '), "Filename should not start with space");
+    assert!(
+        !actual_name.starts_with(' '),
+        "Filename should not start with space"
+    );
 }
 
 //==============
