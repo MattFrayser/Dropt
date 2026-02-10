@@ -1,4 +1,4 @@
-mod tunnel;
-pub mod local_https;
-
-pub use tunnel::CloudflareTunnel;
+pub(crate) mod cloudflare;
+pub(crate) mod local;
+pub(crate) mod tailscale;
+pub(crate) mod tunnel;

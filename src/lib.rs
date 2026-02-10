@@ -3,6 +3,6 @@ pub mod crypto;
 pub mod receive;
 pub mod send;
 pub mod server;
-pub mod transport;
+mod transport;
 pub mod ui;
 pub mod utils;

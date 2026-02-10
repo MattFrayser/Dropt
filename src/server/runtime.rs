@@ -1,9 +1,10 @@
+use crate::common::config::{AppConfig, Transport};
 use crate::common::TransferState;
 use crate::crypto::types::Nonce;
 use crate::server::ServerInstance;
-use crate::transport::local_https::{get_local_ip, start_local_server, Protocol};
-use crate::transport::CloudflareTunnel;
-use crate::ui::tui::{generate_qr, spawn_tui};
+use crate::transport::local::{get_local_ip, start_local_server, BindScope, Protocol};
+use crate::transport::tunnel::Tunnel;
+use crate::ui::tui::{generate_qr, spawn_tui, spinner, spinner_error, spinner_success, TuiConfig};
 use anyhow::{Context, Result};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -279,4 +280,98 @@ async fn wait_for_transfers<S: TransferState>(
 /// Clean up all active sessions, triggering Drop cleanup for incomplete transfers
 async fn cleanup_sessions<S: TransferState>(state: &S) {
     state.cleanup().await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::Session;
+    use crate::crypto::types::EncryptionKey;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[derive(Clone)]
+    struct FakeState {
+        session: Session,
+        active_transfers: Arc<AtomicUsize>,
+        cleanup_calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl TransferState for FakeState {
+        fn transfer_count(&self) -> usize {
+            self.active_transfers.load(Ordering::SeqCst)
+        }
+
+        async fn cleanup(&self) {
+            self.cleanup_calls.fetch_add(1, Ordering::SeqCst);
+            self.active_transfers.store(0, Ordering::SeqCst);
+        }
+
+        fn session(&self) -> &Session {
+            &self.session
+        }
+
+        fn service_path(&self) -> &'static str {
+            "send"
+        }
+
+        fn is_receiving(&self) -> bool {
+            false
+        }
+    }
+
+    fn make_state(active_transfers: usize) -> FakeState {
+        FakeState {
+            session: Session::new(EncryptionKey::new()),
+            active_transfers: Arc::new(AtomicUsize::new(active_transfers)),
+            cleanup_calls: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    fn mark_session_completed(session: &Session) {
+        let token = session.token().to_string();
+        let lock = session.claim(&token).expect("claim session");
+        assert!(session.complete(&token, &lock));
+    }
+
+    #[tokio::test]
+    async fn shutdown_skips_drain_when_session_already_completed() {
+        let state = make_state(3);
+        mark_session_completed(state.session());
+        let (status_sender, _status_receiver) = tokio::sync::watch::channel(None);
+        let handle = axum_server::Handle::new();
+
+        tokio::time::timeout(
+            Duration::from_millis(100),
+            shutdown(handle, state.clone(), status_sender),
+        )
+        .await
+        .expect("shutdown should not wait for drain")
+        .expect("shutdown should succeed");
+
+        assert_eq!(
+            state.cleanup_calls.load(Ordering::SeqCst),
+            1,
+            "cleanup should run once"
+        );
+        assert_eq!(state.transfer_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn shutdown_cleans_up_when_no_active_transfers_remain() {
+        let state = make_state(0);
+        let (status_sender, _status_receiver) = tokio::sync::watch::channel(None);
+        let handle = axum_server::Handle::new();
+
+        shutdown(handle, state.clone(), status_sender)
+            .await
+            .expect("shutdown should succeed");
+
+        assert_eq!(
+            state.cleanup_calls.load(Ordering::SeqCst),
+            1,
+            "cleanup should run once"
+        );
+        assert_eq!(state.transfer_count(), 0);
+    }
 }

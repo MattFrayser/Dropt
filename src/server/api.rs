@@ -56,10 +56,17 @@ pub async fn start_send_server(
     // Call runtime functions directly with typed state
     match transport {
         Transport::Local => {
-            runtime::start_https(server, send_state, nonce, transport, config, progress_tracker)
-                .await
+            runtime::start_https(
+                server,
+                send_state,
+                nonce,
+                transport,
+                config,
+                progress_tracker,
+            )
+            .await
         }
-        _ => {
+        Transport::Cloudflare | Transport::Tailscale => {
             runtime::start_tunnel(
                 server,
                 send_state,
@@ -120,7 +127,7 @@ pub async fn start_receive_server(
             )
             .await
         }
-        _ => {
+        Transport::Cloudflare | Transport::Tailscale => {
             runtime::start_tunnel(
                 server,
                 receive_state,

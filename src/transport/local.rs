@@ -1,25 +1,46 @@
-use crate::server::ServerInstance;
-use crate::ui::tui::{spinner, spinner_success};
+//! Local server bootstrap utilities
+//!
+//! - Tunnel mode should bind loopback only.
+//! - Local HTTPS mode may bind all interfaces for LAN access.
+
 use anyhow::{Context, Result};
 use axum_server::tls_rustls::RustlsConfig;
 use rcgen::generate_simple_self_signed;
 use std::net::{SocketAddr, UdpSocket};
 
+/// HTTP/TLS mode used for local server startup.
 pub enum Protocol {
     Https,
     Http,
 }
 
-/// Utility function for building base HTTP/HTTPS server
-pub async fn start_local_server(
-    server: ServerInstance,
-    protocol: Protocol,
-) -> Result<(u16, axum_server::Handle)> {
-    let spinner = spinner("Starting local server...");
+/// Address exposure policy for the listening socket.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BindScope {
+    Loopback,
+    AllInterfaces,
+}
 
-    // Bind to random port
-    let addr = SocketAddr::from(([0, 0, 0, 0], 0));
-    let listener = std::net::TcpListener::bind(addr).context("Failed to bind socket")?;
+fn bind_addr(scope: BindScope, port: u16) -> SocketAddr {
+    match scope {
+        BindScope::Loopback => SocketAddr::from(([127, 0, 0, 1], port)),
+        BindScope::AllInterfaces => SocketAddr::from(([0, 0, 0, 0], port)),
+    }
+}
+
+/// Starts a local Axum server and returns `(bound_port, handle)`.
+pub async fn start_local_server(
+    app: axum::Router,
+    protocol: Protocol,
+    bind_scope: BindScope,
+    port: u16,
+) -> Result<(u16, axum_server::Handle)> {
+    let addr = bind_addr(bind_scope, port);
+    let listener = std::net::TcpListener::bind(addr).context(
+        "Failed to bind to port - port already in use.\n\n\
+         Is another archdrop instance running?\n\
+         Or is another service using this port?",
+    )?;
 
     listener
         .set_nonblocking(true)
@@ -34,7 +55,6 @@ pub async fn start_local_server(
     // HTTPS uses self signed certs
     match protocol {
         Protocol::Https => {
-            // Use local IP for certificate to allow network access
             let local_ip = get_local_ip().unwrap_or_else(|_| "127.0.0.1".to_string());
             let tls_config = generate_cert(&local_ip)
                 .await
@@ -42,7 +62,7 @@ pub async fn start_local_server(
             tokio::spawn(async move {
                 if let Err(e) = axum_server::from_tcp_rustls(listener, tls_config)
                     .handle(server_handle_clone)
-                    .serve(server.app.into_make_service())
+                    .serve(app.into_make_service())
                     .await
                 {
                     eprintln!("Server error: {}", e);
@@ -53,7 +73,7 @@ pub async fn start_local_server(
             tokio::spawn(async move {
                 if let Err(e) = axum_server::from_tcp(listener)
                     .handle(server_handle_clone)
-                    .serve(server.app.into_make_service())
+                    .serve(app.into_make_service())
                     .await
                 {
                     eprintln!("Server error: {}", e);
@@ -62,15 +82,11 @@ pub async fn start_local_server(
         }
     }
 
-    spinner_success(&spinner, &format!("Server ready on port {}", port));
-
     Ok((port, server_handle))
 }
 
-/// Get the local IP address (non-loopback)
+/// Best-effort local non-loopback IP discovery for URL/certificate use.
 pub fn get_local_ip() -> Result<String> {
-    // This doesn't actually send data, just determines the local IP
-    // Needed for --local flag
     let socket = UdpSocket::bind("0.0.0.0:0").context("Failed to bind socket for IP detection")?;
 
     socket
@@ -82,7 +98,7 @@ pub fn get_local_ip() -> Result<String> {
     Ok(local_addr.ip().to_string())
 }
 
-/// Generate certs and load directly from memory
+/// Builds an in-memory self-signed TLS config for local HTTPS serving.
 pub async fn generate_cert(ip: &str) -> Result<RustlsConfig> {
     let subject_alt_names = vec![ip.to_string(), "localhost".to_string()];
     let cert = generate_simple_self_signed(subject_alt_names)
@@ -97,4 +113,21 @@ pub async fn generate_cert(ip: &str) -> Result<RustlsConfig> {
     RustlsConfig::from_pem(cert_pem, key_pem)
         .await
         .context("Failed to create TLS configuration")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loopback_scope_binds_only_loopback() {
+        let addr = bind_addr(BindScope::Loopback, 8080);
+        assert_eq!(addr.ip().to_string(), "127.0.0.1");
+    }
+
+    #[test]
+    fn all_interfaces_scope_binds_lan_capable() {
+        let addr = bind_addr(BindScope::AllInterfaces, 8080);
+        assert_eq!(addr.ip().to_string(), "0.0.0.0");
+    }
 }
