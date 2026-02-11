@@ -2,7 +2,6 @@
 //!
 //! Precedence: defaults < config < enviroment < CLI
 use anyhow::{ensure, Context, Result};
-use clap::{Args, ValueEnum};
 use directories::ProjectDirs;
 use figment::{
     providers::{Env, Format, Serialized, Toml},
@@ -36,7 +35,7 @@ pub fn config_path() -> PathBuf {
 }
 
 /// Transfer tuning parameters shared by all transports.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Transport {
     #[default]
@@ -199,37 +198,36 @@ impl Default for AppConfig {
     }
 }
 
-#[derive(Args, Debug, Clone, Default, Serialize)]
-pub struct CliArgs {
-    /// Transport method (overrides config default)
-    #[arg(long, value_enum)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ConfigOverrides {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub via: Option<Transport>,
-
-    /// Port override for the selected/default transport (0 = auto-assign)
-    #[arg(long)]
+    pub transport: Option<Transport>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub port: Option<u16>,
 }
 
-/// Loads config from defaults/file/env, then applies overrides.
-pub fn load_config(cli_args: &CliArgs) -> Result<AppConfig> {
+/// Loads config from defaults/file/env.
+pub fn load_config() -> Result<AppConfig> {
     let path = config_path();
 
-    let mut config: AppConfig = Figment::new()
+    let config: AppConfig = Figment::new()
         .merge(Serialized::defaults(AppConfig::default()))
         .merge(Toml::file(&path))
         .merge(Env::prefixed("ARCHDROP_").split("_"))
         .extract()
         .context("Failed to load configuration")?;
 
-    // CLI overrides apply only to selected transport.
-    if let Some(port) = cli_args.port {
-        let transport = cli_args.via.unwrap_or(config.default_transport);
-        config.set_port(transport, port);
-    }
-
     config.validate()?;
 
     Ok(config)
+}
+
+/// Applies runtime overrides to a loaded config.
+pub fn apply_overrides(mut config: AppConfig, overrides: &ConfigOverrides) -> AppConfig {
+    if let Some(port) = overrides.port {
+        let transport = overrides.transport.unwrap_or(config.default_transport);
+        config.set_port(transport, port);
+    }
+
+    config
 }

@@ -1,6 +1,6 @@
 mod common;
 
-use archdrop::common::config::{load_config, CliArgs, MAX_TRANSFER_CHUNK_SIZE_BYTES};
+use archdrop::common::config::{load_config, MAX_TRANSFER_CHUNK_SIZE_BYTES};
 use common::config_test_utils::with_config_env;
 
 #[test]
@@ -11,7 +11,7 @@ fn rejects_zero_chunk_size() {
         chunk_size = 0
         "#,
         || {
-            let err = load_config(&CliArgs::default()).expect_err("expected validation failure");
+            let err = load_config().expect_err("expected validation failure");
             assert!(err.to_string().contains("chunk_size"));
         },
     );
@@ -25,7 +25,7 @@ fn rejects_zero_concurrency() {
         concurrency = 0
         "#,
         || {
-            let err = load_config(&CliArgs::default()).expect_err("expected validation failure");
+            let err = load_config().expect_err("expected validation failure");
             assert!(err.to_string().contains("concurrency"));
         },
     );
@@ -39,7 +39,7 @@ fn rejects_over_max_chunk_size() {
         chunk_size = 1073741824
         "#,
         || {
-            let err = load_config(&CliArgs::default()).expect_err("expected validation failure");
+            let err = load_config().expect_err("expected validation failure");
             assert!(err.to_string().contains("chunk_size"));
         },
     );
@@ -52,7 +52,7 @@ fn rejects_chunk_size_above_conservative_runtime_limit() {
         MAX_TRANSFER_CHUNK_SIZE_BYTES + 1
     );
     with_config_env(&config, || {
-        let err = load_config(&CliArgs::default()).expect_err("expected validation failure");
+        let err = load_config().expect_err("expected validation failure");
         assert!(err.to_string().contains("chunk_size"));
     });
 }
@@ -64,7 +64,7 @@ fn allows_chunk_size_at_conservative_runtime_limit() {
         MAX_TRANSFER_CHUNK_SIZE_BYTES
     );
     with_config_env(&config, || {
-        load_config(&CliArgs::default()).expect("expected config to be valid");
+        load_config().expect("expected config to be valid");
     });
 }
 
@@ -76,7 +76,7 @@ fn rejects_over_max_concurrency() {
         concurrency = 1000
         "#,
         || {
-            let err = load_config(&CliArgs::default()).expect_err("expected validation failure");
+            let err = load_config().expect_err("expected validation failure");
             assert!(err.to_string().contains("concurrency"));
         },
     );

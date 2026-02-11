@@ -1,9 +1,9 @@
 use anyhow::{ensure, Context, Result};
 use archdrop::{
-    common::{config, config_commands, CliArgs, Manifest},
+    common::{config, config_commands, ConfigOverrides, Manifest, Transport},
     send, server,
 };
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 use tracing_subscriber::EnvFilter;
 use walkdir::WalkDir;
@@ -64,6 +64,43 @@ enum Commands {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum CliTransport {
+    Local,
+    Cloudflare,
+    Tailscale,
+}
+
+impl From<CliTransport> for Transport {
+    fn from(value: CliTransport) -> Self {
+        match value {
+            CliTransport::Local => Transport::Local,
+            CliTransport::Cloudflare => Transport::Cloudflare,
+            CliTransport::Tailscale => Transport::Tailscale,
+        }
+    }
+}
+
+#[derive(Args, Debug, Clone, Default)]
+struct CliArgs {
+    /// Transport method (overrides config default)
+    #[arg(long, value_enum)]
+    via: Option<CliTransport>,
+
+    /// Port override for the selected/default transport (0 = auto-assign)
+    #[arg(long)]
+    port: Option<u16>,
+}
+
+impl From<&CliArgs> for ConfigOverrides {
+    fn from(args: &CliArgs) -> Self {
+        Self {
+            transport: args.via.map(Into::into),
+            port: args.port,
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     if std::env::var("TOKIO_CONSOLE").is_ok() {
@@ -87,7 +124,8 @@ async fn main() -> Result<()> {
             no_zip,
             args,
         } => {
-            let config = config::load_config(&args)?;
+            let overrides = ConfigOverrides::from(&args);
+            let config = config::apply_overrides(config::load_config()?, &overrides);
             let use_zip = resolve_zip_enabled(zip, no_zip, config.zip);
 
             // Best-effort cleanup: hard kill (SIGKILL) can leave temp zips behind.
@@ -126,7 +164,7 @@ async fn main() -> Result<()> {
 
             // Send needs to build a manifest of file metadata
             // to send to the receiver before download begins
-            let transport = args.via.unwrap_or(config.default_transport);
+            let transport = overrides.transport.unwrap_or(config.default_transport);
             let transfer_settings = config.transfer_settings(transport);
             let manifest = Manifest::new(files_to_send, None, transfer_settings)
                 .await
@@ -137,7 +175,8 @@ async fn main() -> Result<()> {
             drop(temp_archive);
         }
         Commands::Receive { destination, args } => {
-            let config = config::load_config(&args)?;
+            let overrides = ConfigOverrides::from(&args);
+            let config = config::apply_overrides(config::load_config()?, &overrides);
 
             if !destination.exists() {
                 tokio::fs::create_dir_all(&destination)
@@ -151,7 +190,7 @@ async fn main() -> Result<()> {
                 destination.display()
             );
 
-            let transport = args.via.unwrap_or(config.default_transport);
+            let transport = overrides.transport.unwrap_or(config.default_transport);
 
             server::start_receive_server(destination, transport, &config)
                 .await

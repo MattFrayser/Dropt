@@ -1,6 +1,6 @@
 mod common;
 
-use archdrop::common::config::{load_config, CliArgs, Transport};
+use archdrop::common::config::{apply_overrides, load_config, ConfigOverrides, Transport};
 use common::config_test_utils::with_config_env;
 
 #[test]
@@ -13,12 +13,13 @@ fn precedence_defaults_file_env_cli() {
         || {
             std::env::set_var("ARCHDROP_LOCAL_PORT", "2222");
 
-            let cli_args = CliArgs {
-                via: Some(Transport::Local),
+            let overrides = ConfigOverrides {
+                transport: Some(Transport::Local),
                 port: Some(3333),
             };
 
-            let config = load_config(&cli_args).expect("load config");
+            let config = load_config().expect("load config");
+            let config = apply_overrides(config, &overrides);
             assert_eq!(config.port(Transport::Local), 3333);
         },
     );
@@ -34,7 +35,7 @@ fn precedence_defaults_file_env_without_cli() {
         || {
             std::env::set_var("ARCHDROP_LOCAL_PORT", "2222");
 
-            let config = load_config(&CliArgs::default()).expect("load config");
+            let config = load_config().expect("load config");
             assert_eq!(config.port(Transport::Local), 2222);
         },
     );
@@ -43,7 +44,7 @@ fn precedence_defaults_file_env_without_cli() {
 #[test]
 fn zip_defaults_to_false() {
     with_config_env("", || {
-        let config = load_config(&CliArgs::default()).expect("load config");
+        let config = load_config().expect("load config");
         assert!(!config.zip);
     });
 }
@@ -55,7 +56,7 @@ fn zip_reads_from_config_file() {
         zip = true
         "#,
         || {
-            let config = load_config(&CliArgs::default()).expect("load config");
+            let config = load_config().expect("load config");
             assert!(config.zip);
         },
     );
@@ -69,7 +70,7 @@ fn zip_env_overrides_config_file() {
         "#,
         || {
             std::env::set_var("ARCHDROP_ZIP", "true");
-            let config = load_config(&CliArgs::default()).expect("load config");
+            let config = load_config().expect("load config");
             assert!(config.zip);
         },
     );
