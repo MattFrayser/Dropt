@@ -1,49 +1,45 @@
 use axum::{
-    body::Body,
-    http::{Response, StatusCode},
-    response::Html,
+    http::header,
+    response::{Html, IntoResponse},
 };
 
 //-- HELPER FUNCS
-fn serve_html(content: &'static str) -> Result<Html<&'static str>, StatusCode> {
-    Ok(Html(content))
+fn serve_html(content: &'static str) -> Html<&'static str> {
+    Html(content)
 }
-fn serve_js(content: &'static str) -> Response<Body> {
-    Response::builder()
-        .header("content-type", "application/javascript;charset=utf-8")
-        .body(Body::from(content))
-        .unwrap()
+fn serve_js(content: &'static str) -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "application/javascript;charset=utf-8")],
+        content,
+    )
 }
-fn serve_css(content: &'static str) -> Response<Body> {
-    Response::builder()
-        .header("content-type", "text/css; charset=utf-8")
-        .body(Body::from(content))
-        .unwrap()
+fn serve_css(content: &'static str) -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], content)
 }
 
 //-- UPLOAD PAGE
-pub async fn serve_upload_page() -> Result<Html<&'static str>, StatusCode> {
+pub fn serve_upload_page() -> impl IntoResponse {
     serve_html(include_str!("upload.html"))
 }
 
-pub async fn serve_upload_js() -> Response<Body> {
+pub fn serve_upload_js() -> impl IntoResponse {
     serve_js(include_str!("upload.js"))
 }
 
 //-- DOWNLOAD_PAGE
-pub async fn serve_download_page() -> Result<Html<&'static str>, StatusCode> {
+pub fn serve_download_page() -> impl IntoResponse {
     serve_html(include_str!("download.html"))
 }
 
-pub async fn serve_download_js() -> Response<Body> {
+pub fn serve_download_js() -> impl IntoResponse {
     serve_js(include_str!("download.js"))
 }
 
 //-- SHARED JS AND CSS
-pub async fn serve_shared_js() -> Response<Body> {
+pub fn serve_shared_js() -> impl IntoResponse {
     serve_js(include_str!("shared.js"))
 }
 
-pub async fn serve_shared_css() -> impl axum::response::IntoResponse {
+pub fn serve_shared_css() -> impl IntoResponse {
     serve_css(include_str!("styles.css"))
 }
