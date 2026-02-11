@@ -17,10 +17,10 @@ pub fn create_send_router(state: &SendAppState) -> Router {
             get(send::handlers::send_handler),
         )
         .route("/send/complete", post(send::handlers::complete_download))
-        .route("/send", get(web::serve_download_page))
-        .route("/download.js", get(web::serve_download_js))
-        .route("/styles.css", get(web::serve_shared_css))
-        .route("/shared.js", get(web::serve_shared_js))
+        .route("/send", get(|| async { web::serve_download_page() }))
+        .route("/download.js", get(|| async { web::serve_download_js() }))
+        .route("/styles.css", get(|| async { web::serve_shared_css() }))
+        .route("/shared.js", get(|| async { web::serve_shared_js() }))
         .with_state(state.clone())
 }
 
@@ -37,14 +37,14 @@ pub fn create_receive_router(state: &ReceiveAppState) -> Router {
             "/receive/finalize",
             post(receive::handlers::finalize_upload),
         )
-        .route("/receive", get(web::serve_upload_page))
+        .route("/receive", get(|| async { web::serve_upload_page() }))
         .route(
             "/receive/complete",
             post(receive::handlers::complete_transfer),
         )
-        .route("/upload.js", get(web::serve_upload_js))
-        .route("/styles.css", get(web::serve_shared_css))
-        .route("/shared.js", get(web::serve_shared_js))
+        .route("/upload.js", get(|| async { web::serve_upload_js() }))
+        .route("/styles.css", get(|| async { web::serve_shared_css() }))
+        .route("/shared.js", get(|| async { web::serve_shared_js() }))
         .with_state(state.clone())
         .layer(DefaultBodyLimit::max(25 * 1024 * 1024))
 }
