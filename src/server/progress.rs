@@ -1,5 +1,6 @@
 //! Lock-free transfer progress tracking for TUI snapshots.
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
@@ -10,6 +11,7 @@ struct FileState {
     total_chunks: Vec<u64>,
     done_chunks: Vec<AtomicU64>,
     completed: Vec<AtomicBool>,
+    skipped: Mutex<HashMap<usize, String>>,
     errors: Mutex<Vec<(usize, String)>>,
 }
 
@@ -58,6 +60,7 @@ impl ProgressTracker {
             total_chunks: chunk_totals,
             done_chunks,
             completed,
+            skipped: Mutex::new(HashMap::new()),
             errors: Mutex::new(Vec::new()),
         });
     }
@@ -80,7 +83,12 @@ impl ProgressTracker {
                 && !fs.completed[file_index].swap(true, Ordering::AcqRel)
             {
                 self.files_completed.fetch_add(1, Ordering::Relaxed);
-                fs.done_chunks[file_index].store(fs.total_chunks[file_index], Ordering::Relaxed);
+                let total = fs.total_chunks[file_index];
+                let prev = fs.done_chunks[file_index].swap(total, Ordering::Relaxed);
+                if prev < total {
+                    self.completed_chunks
+                        .fetch_add(total - prev, Ordering::Relaxed);
+                }
             }
         }
     }
@@ -95,6 +103,26 @@ impl ProgressTracker {
         }
     }
 
+    /// Mark a file as skipped with a reason.
+    /// Idempotent - repeated calls for the same file index are no-ops.
+    pub fn file_skipped(&self, file_index: usize, reason: String) {
+        if let Some(fs) = self.file_state.get() {
+            if file_index < fs.names.len() {
+                let mut skipped = fs.skipped.lock().unwrap();
+                skipped.entry(file_index).or_insert(reason);
+                if !fs.completed[file_index].swap(true, Ordering::AcqRel) {
+                    self.files_completed.fetch_add(1, Ordering::Relaxed);
+                    let total = fs.total_chunks[file_index];
+                    let prev = fs.done_chunks[file_index].swap(total, Ordering::Relaxed);
+                    if prev < total {
+                        self.completed_chunks
+                            .fetch_add(total - prev, Ordering::Relaxed);
+                    }
+                }
+            }
+        }
+    }
+
     /// Build a snapshot for TUI rendering.
     pub fn snapshot(&self) -> TransferProgress {
         let Some(fs) = self.file_state.get() else {
@@ -102,6 +130,7 @@ impl ProgressTracker {
         };
 
         let errors = fs.errors.lock().unwrap();
+        let skipped = fs.skipped.lock().unwrap();
         let files = fs
             .names
             .iter()
@@ -112,6 +141,8 @@ impl ProgressTracker {
 
                 let status = if let Some((_, err)) = errors.iter().find(|(idx, _)| *idx == i) {
                     FileStatus::Failed(err.clone())
+                } else if let Some(reason) = skipped.get(&i) {
+                    FileStatus::Skipped(reason.clone())
                 } else if done >= total && total > 0 {
                     FileStatus::Complete
                 } else if done > 0 {
@@ -208,12 +239,45 @@ mod tests {
     }
 
     #[test]
+    fn skipped_status_marks_file_terminal_and_is_idempotent() {
+        let tracker = ProgressTracker::new();
+        tracker.init_files(vec!["a.bin".into()], vec![4]);
+
+        tracker.file_skipped(0, "browser_limit".into());
+        tracker.file_skipped(0, "browser_limit".into());
+
+        let snapshot = tracker.snapshot();
+        assert_eq!(snapshot.completed, 1);
+        assert!(matches!(
+            snapshot.files[0].status,
+            FileStatus::Skipped(ref reason) if reason == "browser_limit"
+        ));
+        assert_eq!(tracker.get_progress(), (4, 4));
+    }
+
+    #[test]
+    fn failed_status_has_precedence_over_skipped() {
+        let tracker = ProgressTracker::new();
+        tracker.init_files(vec!["a.bin".into()], vec![1]);
+
+        tracker.file_skipped(0, "browser_limit".into());
+        tracker.file_failed(0, "disk full".into());
+
+        let snapshot = tracker.snapshot();
+        assert!(matches!(
+            snapshot.files[0].status,
+            FileStatus::Failed(ref msg) if msg == "disk full"
+        ));
+    }
+
+    #[test]
     fn ignores_out_of_range_file_indexes() {
         let tracker = ProgressTracker::new();
         tracker.init_files(vec!["a.bin".into()], vec![2]);
 
         tracker.increment_file(99);
         tracker.file_complete(99);
+        tracker.file_skipped(99, "browser_limit".into());
         tracker.file_failed(99, "invalid".into());
 
         let snapshot = tracker.snapshot();

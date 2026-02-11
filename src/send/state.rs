@@ -25,7 +25,6 @@ pub struct SendAppStateInner {
     pub file_handles: Arc<DashMap<usize, Arc<SendFileHandle>>>,
     pub buffer_pool: Arc<BufferPool>,
     pub config: TransferSettings,
-    chunks_sent: Arc<AtomicU64>,
     sent_chunks: Arc<DashMap<(usize, usize), ()>>,
     total_chunks: Arc<AtomicU64>,
 }
@@ -59,7 +58,6 @@ impl SendAppState {
                 file_handles: Arc::new(DashMap::new()),
                 buffer_pool: BufferPool::new(pool_size, buf_capacity),
                 config,
-                chunks_sent: Arc::new(AtomicU64::new(0)),
                 sent_chunks: Arc::new(DashMap::new()),
                 total_chunks: Arc::new(AtomicU64::new(total_chunks)),
             }),
@@ -76,18 +74,6 @@ impl SendAppState {
         self.manifest.files.get(index)
     }
 
-    /// Increment sent-chunk counter and return `(sent, total)`.
-    pub fn increment_sent_chunk(&self) -> (u64, u64) {
-        let new_count = self.chunks_sent.fetch_add(1, Ordering::SeqCst) + 1;
-        let total = self.total_chunks.load(Ordering::SeqCst);
-        (new_count, total)
-    }
-
-    /// Return whether this file/chunk pair was already sent.
-    pub fn has_chunk_been_sent(&self, file_index: usize, chunk_index: usize) -> bool {
-        self.sent_chunks.contains_key(&(file_index, chunk_index))
-    }
-
     /// Mark a file/chunk pair as sent; true if newly inserted.
     pub fn mark_chunk_sent(&self, file_index: usize, chunk_index: usize) -> bool {
         self.sent_chunks
@@ -100,9 +86,9 @@ impl SendAppState {
         self.sent_chunks.len()
     }
 
-    /// Return total chunk responses served.
+    /// Return count of unique chunks sent.
     pub fn get_chunks_sent(&self) -> u64 {
-        self.chunks_sent.load(Ordering::SeqCst)
+        self.unique_chunks_sent() as u64
     }
 
     /// Return expected total chunk count for this transfer.
@@ -167,5 +153,32 @@ mod tests {
         state.total_chunks.store(9, Ordering::SeqCst);
 
         assert_eq!(cloned.get_total_chunks(), 9);
+    }
+
+    #[test]
+    fn chunks_sent_tracks_unique_chunk_marks() {
+        let state = SendAppState::new(
+            EncryptionKey::new(),
+            Manifest {
+                files: Vec::new(),
+                config: TransferSettings {
+                    chunk_size: 1024,
+                    concurrency: 1,
+                },
+            },
+            3,
+            Arc::new(ProgressTracker::new()),
+            TransferSettings {
+                chunk_size: 1024,
+                concurrency: 1,
+            },
+        );
+
+        assert!(state.mark_chunk_sent(0, 0));
+        assert!(!state.mark_chunk_sent(0, 0));
+        assert!(state.mark_chunk_sent(0, 1));
+
+        assert_eq!(state.unique_chunks_sent(), 2);
+        assert_eq!(state.get_chunks_sent(), 2);
     }
 }

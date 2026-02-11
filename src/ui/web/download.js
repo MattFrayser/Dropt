@@ -363,7 +363,21 @@ async function startDownload() {
 
         // Completion
         await retryWithExponentialBackoff(async () => {
-            const response = await fetch('/send/complete', { method: 'POST', headers: transferHeaders() });
+            const skippedFilesPayload = skippedFiles.map(({ file }) => ({
+                fileIndex: file.index,
+                reason: 'browser_limit'
+            }));
+
+            const response = await fetch('/send/complete', {
+                method: 'POST',
+                headers: {
+                    ...transferHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    skippedFiles: skippedFilesPayload
+                })
+            });
             if (!response.ok) {
                 throw new Error(`Completion handshake failed: ${response.status}`);
             }

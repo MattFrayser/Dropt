@@ -94,6 +94,7 @@ fn build_visible_file_rows(files: &[FileProgress], limit: usize) -> (Vec<FileLis
                     (format!("{:.0}%", percent), Color::Green, false)
                 }
                 FileStatus::Complete => ("complete".to_string(), Color::Green, false),
+                FileStatus::Skipped(_) => ("skipped".to_string(), Color::Yellow, false),
                 FileStatus::Failed(_) => ("failed".to_string(), Color::Red, false),
             };
 
@@ -227,6 +228,13 @@ mod tests {
         }
     }
 
+    fn skipped_file(name: &str) -> FileProgress {
+        FileProgress {
+            filename: name.to_string(),
+            status: FileStatus::Skipped("browser_limit".to_string()),
+        }
+    }
+
     #[test]
     fn builds_vertical_rows_with_waiting_status_text() {
         let files = vec![waiting_file("text1.txt"), waiting_file("test2.txt")];
@@ -256,5 +264,15 @@ mod tests {
         assert_eq!(rows.len(), 5);
         assert_eq!(rows[4].filename, "e.txt");
         assert_eq!(overflow, 2);
+    }
+
+    #[test]
+    fn skipped_rows_render_skipped_status_text() {
+        let files = vec![skipped_file("clip.mov")];
+        let (rows, overflow) = build_visible_file_rows(&files, 5);
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].status_text, "skipped");
+        assert_eq!(overflow, 0);
     }
 }

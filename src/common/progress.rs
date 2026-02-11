@@ -4,6 +4,7 @@ pub enum FileStatus {
     Waiting,
     InProgress(f64),
     Complete,
+    Skipped(String),
     Failed(String),
 }
 

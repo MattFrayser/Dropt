@@ -9,6 +9,7 @@ use axum::{
 };
 use bytes::Bytes;
 use reqwest::header;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::common::AppError;
@@ -26,6 +27,24 @@ pub struct SendManifestResponse {
     manifest: crate::common::Manifest,
     #[serde(rename = "lockToken")]
     lock_token: String,
+}
+
+#[derive(serde::Deserialize, Default)]
+#[serde(default, rename_all = "camelCase")]
+pub struct SendCompleteRequest {
+    skipped_files: Vec<SkippedFileReport>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkippedFileReport {
+    file_index: usize,
+    reason: String,
+}
+
+struct CompletionAccounting {
+    accounted_chunks: u64,
+    is_premature: bool,
 }
 
 /// Claim the session and return the transfer manifest.
@@ -71,9 +90,7 @@ pub async fn send_handler(
 
     // Some browser send multiple retries (safari)
     // Be noted to not count towards total
-    let is_retry = state.has_chunk_been_sent(file_index, chunk_index);
-    if !is_retry {
-        state.mark_chunk_sent(file_index, chunk_index);
+    if state.mark_chunk_sent(file_index, chunk_index) {
         state.progress.increment_file(file_index);
     }
 
@@ -172,6 +189,7 @@ pub async fn complete_download(
     BearerToken(token): BearerToken,
     LockToken(lock_token): LockToken,
     State(state): State<SendAppState>,
+    payload: Option<Json<SendCompleteRequest>>,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
     // If the session is ALREADY completed, return 200 OK.
     // Handles the client retrying on network failure.
@@ -186,16 +204,29 @@ pub async fn complete_download(
     // Session must be active and owned to complete
     auth::require_active_session(&state.session, &token, &lock_token)?;
 
+    let payload = payload.map_or_else(SendCompleteRequest::default, |Json(value)| value);
+    let (skipped_files, skipped_chunks) = apply_skipped_reports(&state, payload.skipped_files);
+
     let chunks_sent = state.get_chunks_sent();
     let total_chunks = state.get_total_chunks();
+    let accounting = build_completion_accounting(chunks_sent, total_chunks, skipped_chunks);
 
     // Verify all chunks were actually sent
-    if chunks_sent < total_chunks {
+    if accounting.is_premature {
         tracing::warn!(
-            "Complete called prematurely: {}/{} chunks sent ({}% complete)",
+            "Complete called with unaccounted chunks: served={} skipped={} accounted={}/{}",
             chunks_sent,
+            skipped_chunks,
+            accounting.accounted_chunks,
             total_chunks,
-            (chunks_sent as f64 / total_chunks as f64 * 100.0)
+        );
+    } else {
+        tracing::info!(
+            "Send complete: served={} skipped_files={} skipped_chunks={} total={}",
+            chunks_sent,
+            skipped_files,
+            skipped_chunks,
+            total_chunks
         );
     }
 
@@ -212,5 +243,80 @@ fn mark_all_files_complete(state: &SendAppState) {
     let manifest = state.manifest();
     for i in 0..manifest.files.len() {
         state.progress.file_complete(i);
+    }
+}
+
+fn normalize_skip_reason(reason: &str) -> Option<&'static str> {
+    match reason {
+        "browser_limit" => Some("browser_limit"),
+        "user_skipped" => Some("user_skipped"),
+        _ => None,
+    }
+}
+
+fn build_completion_accounting(
+    chunks_sent: u64,
+    total_chunks: u64,
+    skipped_chunks: u64,
+) -> CompletionAccounting {
+    let accounted_chunks = chunks_sent.saturating_add(skipped_chunks).min(total_chunks);
+    CompletionAccounting {
+        accounted_chunks,
+        is_premature: accounted_chunks < total_chunks,
+    }
+}
+
+fn apply_skipped_reports(state: &SendAppState, reports: Vec<SkippedFileReport>) -> (usize, u64) {
+    let mut seen = HashSet::new();
+    let mut skipped_files = 0usize;
+    let mut skipped_chunks = 0u64;
+
+    for report in reports {
+        if !seen.insert(report.file_index) {
+            continue;
+        }
+
+        let Some(reason) = normalize_skip_reason(report.reason.as_str()) else {
+            tracing::warn!(
+                file_index = report.file_index,
+                reason = report.reason,
+                "Ignoring skipped file report with unsupported reason"
+            );
+            continue;
+        };
+
+        let Some(file) = state.get_file(report.file_index) else {
+            tracing::warn!(
+                file_index = report.file_index,
+                "Ignoring skipped file report with out-of-range file index"
+            );
+            continue;
+        };
+
+        let file_chunks = file.size.div_ceil(state.config.chunk_size);
+        skipped_chunks = skipped_chunks.saturating_add(file_chunks);
+        skipped_files += 1;
+        state.progress.file_skipped(report.file_index, reason.to_string());
+    }
+
+    (skipped_files, skipped_chunks)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_completion_accounting, normalize_skip_reason};
+
+    #[test]
+    fn normalize_skip_reason_accepts_known_codes_only() {
+        assert_eq!(normalize_skip_reason("browser_limit"), Some("browser_limit"));
+        assert_eq!(normalize_skip_reason("user_skipped"), Some("user_skipped"));
+        assert_eq!(normalize_skip_reason("disk_full"), None);
+    }
+
+    #[test]
+    fn completion_accounting_adds_skipped_chunks_to_served_chunks() {
+        let accounting = build_completion_accounting(7, 10, 3);
+        assert_eq!(accounting.accounted_chunks, 10);
+        assert!(!accounting.is_premature);
     }
 }
