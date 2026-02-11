@@ -264,11 +264,12 @@ pub async fn finalize_upload(
     let relative_path =
         relative_path.ok_or_else(|| AppError::BadRequest("missing relative_path".to_string()))?;
 
-    // Generate file ID and remove from sessions map
+    // Generate file ID and read session from map
     let file_id = security::hash_path(&relative_path);
 
-    let (_key, session_mutex) = receive_sessions
-        .remove(&file_id)
+    let session_mutex = receive_sessions
+        .get(&file_id)
+        .map(|entry| entry.value().clone())
         .ok_or_else(|| AppError::NotFound(format!("session not found: {}", relative_path)))?;
 
     // Lock to finalize
@@ -284,6 +285,9 @@ pub async fn finalize_upload(
 
     // Finalize storage
     let computed_hash = session.storage.finalize().await?;
+
+    // Remove only after successful finalize so retries remain possible on incomplete files.
+    receive_sessions.remove(&file_id);
 
     // Mark file as complete for TUI
     state.progress.file_complete(session.file_index);

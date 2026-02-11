@@ -677,6 +677,124 @@ async fn test_duplicate_chunk_detection() {
     );
 }
 
+#[tokio::test]
+async fn test_premature_finalize_does_not_break_chunk_retries() {
+    let temp_dir = setup_temp_dir();
+    let key = EncryptionKey::new();
+    let (app, state) = create_test_app(temp_dir.path().to_path_buf(), key.clone());
+    let token = state.session.token().to_string();
+
+    let chunk0 = create_test_data(0xAA, CHUNK_SIZE);
+    let chunk1 = create_test_data(0xBB, CHUNK_SIZE);
+    let file_size = (2 * CHUNK_SIZE) as u64;
+    let nonce = Nonce::new();
+
+    // Send manifest
+    let manifest = serde_json::json!({
+        "files": [
+            {
+                "relative_path": "retry-after-finalize.bin",
+                "size": file_size
+            }
+        ]
+    });
+    let request = build_json_request("/receive/manifest", manifest, &token);
+    let manifest_response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("Failed to send manifest");
+    assert_eq!(manifest_response.status(), StatusCode::OK);
+    let manifest_json = extract_json(manifest_response).await;
+    let lock_token = manifest_json["lockToken"].as_str().unwrap().to_string();
+
+    let cipher = create_cipher(&key);
+
+    // Upload first chunk only
+    let mut encrypted0 = chunk0.clone();
+    archdrop::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted0, 0)
+        .expect("Failed to encrypt chunk 0");
+    let request = with_lock_token(
+        build_multipart_request(
+            "/receive/chunk",
+            "retry-after-finalize.bin",
+            0,
+            2,
+            file_size,
+            &nonce.to_base64(),
+            encrypted0,
+            &token,
+        ),
+        &lock_token,
+    );
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("Failed to upload chunk 0");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Premature finalize should fail as incomplete
+    let request = with_lock_token(
+        build_finalize_request("/receive/finalize", "retry-after-finalize.bin", &token),
+        &lock_token,
+    );
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("Failed to call premature finalize");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    // Retry remaining chunk should still work after failed finalize
+    let mut encrypted1 = chunk1.clone();
+    archdrop::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted1, 1)
+        .expect("Failed to encrypt chunk 1");
+    let request = with_lock_token(
+        build_multipart_request(
+            "/receive/chunk",
+            "retry-after-finalize.bin",
+            1,
+            2,
+            file_size,
+            &nonce.to_base64(),
+            encrypted1,
+            &token,
+        ),
+        &lock_token,
+    );
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("Failed to upload chunk 1");
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "chunk retry after failed finalize should succeed"
+    );
+
+    // Finalize should now succeed
+    let request = with_lock_token(
+        build_finalize_request("/receive/finalize", "retry-after-finalize.bin", &token),
+        &lock_token,
+    );
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("Failed to finalize upload");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Verify output content assembled correctly
+    let output_file = temp_dir.path().join("retry-after-finalize.bin");
+    let contents = tokio::fs::read(&output_file)
+        .await
+        .expect("Failed to read output file");
+    assert_eq!(&contents[0..16], &[0xAA; 16]);
+    assert_eq!(&contents[CHUNK_SIZE..CHUNK_SIZE + 16], &[0xBB; 16]);
+}
+
 //=======================
 // Disk Space
 //=======================
