@@ -10,7 +10,10 @@ use http_body_util::BodyExt;
 use tower::ServiceExt;
 
 fn create_app() -> Router {
-    async fn protected(BearerToken(_token): BearerToken, LockToken(_lock): LockToken) -> impl IntoResponse {
+    async fn protected(
+        BearerToken(_token): BearerToken,
+        LockToken(_lock): LockToken,
+    ) -> impl IntoResponse {
         StatusCode::OK
     }
 

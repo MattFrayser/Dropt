@@ -12,6 +12,7 @@ struct EnvRestore {
     cloudflare_port: Option<std::ffi::OsString>,
     tailscale_port: Option<std::ffi::OsString>,
     default_transport: Option<std::ffi::OsString>,
+    zip: Option<std::ffi::OsString>,
 }
 
 impl Drop for EnvRestore {
@@ -45,6 +46,12 @@ impl Drop for EnvRestore {
         } else {
             std::env::remove_var("ARCHDROP_DEFAULT_TRANSPORT");
         }
+
+        if let Some(value) = self.zip.take() {
+            std::env::set_var("ARCHDROP_ZIP", value);
+        } else {
+            std::env::remove_var("ARCHDROP_ZIP");
+        }
     }
 }
 
@@ -66,6 +73,7 @@ pub fn with_config_env<T>(config_toml: &str, f: impl FnOnce() -> T) -> T {
         cloudflare_port: std::env::var_os("ARCHDROP_CLOUDFLARE_PORT"),
         tailscale_port: std::env::var_os("ARCHDROP_TAILSCALE_PORT"),
         default_transport: std::env::var_os("ARCHDROP_DEFAULT_TRANSPORT"),
+        zip: std::env::var_os("ARCHDROP_ZIP"),
     };
 
     std::env::set_var("XDG_CONFIG_HOME", temp_dir.path());
@@ -73,6 +81,7 @@ pub fn with_config_env<T>(config_toml: &str, f: impl FnOnce() -> T) -> T {
     std::env::remove_var("ARCHDROP_CLOUDFLARE_PORT");
     std::env::remove_var("ARCHDROP_TAILSCALE_PORT");
     std::env::remove_var("ARCHDROP_DEFAULT_TRANSPORT");
+    std::env::remove_var("ARCHDROP_ZIP");
 
     let result = f();
     drop(restore);

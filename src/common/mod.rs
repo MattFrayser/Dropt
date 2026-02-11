@@ -5,11 +5,13 @@ pub mod config;
 pub mod config_commands;
 pub mod errors;
 pub mod manifest;
+pub mod progress;
 pub mod session_core;
 
 pub use config::{AppConfig, CliArgs, TransferSettings, Transport};
 pub use errors::AppError;
 pub use manifest::{FileEntry, Manifest};
+pub use progress::{FileProgress, FileStatus, TransferProgress};
 pub use session_core::{ClaimError, Session, SessionState};
 
 /// Runtime contract for send/receive state implementations.

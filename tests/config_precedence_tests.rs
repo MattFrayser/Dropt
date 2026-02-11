@@ -39,3 +39,38 @@ fn precedence_defaults_file_env_without_cli() {
         },
     );
 }
+
+#[test]
+fn zip_defaults_to_false() {
+    with_config_env("", || {
+        let config = load_config(&CliArgs::default()).expect("load config");
+        assert!(!config.zip);
+    });
+}
+
+#[test]
+fn zip_reads_from_config_file() {
+    with_config_env(
+        r#"
+        zip = true
+        "#,
+        || {
+            let config = load_config(&CliArgs::default()).expect("load config");
+            assert!(config.zip);
+        },
+    );
+}
+
+#[test]
+fn zip_env_overrides_config_file() {
+    with_config_env(
+        r#"
+        zip = false
+        "#,
+        || {
+            std::env::set_var("ARCHDROP_ZIP", "true");
+            let config = load_config(&CliArgs::default()).expect("load config");
+            assert!(config.zip);
+        },
+    );
+}

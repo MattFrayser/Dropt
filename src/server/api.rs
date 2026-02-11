@@ -17,11 +17,39 @@ use std::sync::Arc;
 pub struct ServerInstance {
     pub app: axum::Router,
     pub display_name: String,
+    pub display_files: Vec<String>,
+    pub display_overflow_count: Option<usize>,
 }
 
 impl ServerInstance {
-    pub fn new(app: Router, display_name: String) -> Self {
-        Self { app, display_name }
+    pub fn new(
+        app: Router,
+        display_name: String,
+        display_files: Vec<String>,
+        display_overflow_count: Option<usize>,
+    ) -> Self {
+        Self {
+            app,
+            display_name,
+            display_files,
+            display_overflow_count,
+        }
+    }
+}
+
+fn build_send_display_label(manifest: &Manifest) -> (String, Option<usize>) {
+    let visible_limit = 5;
+    let visible_names: Vec<&str> = manifest
+        .files
+        .iter()
+        .take(visible_limit)
+        .map(|file| file.name.as_str())
+        .collect();
+    let label = visible_names.join(", ");
+    let overflow = manifest.files.len().checked_sub(visible_limit);
+    match overflow {
+        Some(0) | None => (label, None),
+        Some(count) => (label, Some(count)),
     }
 }
 
@@ -36,11 +64,13 @@ pub async fn start_send_server(
     let transfer_settings = config.transfer_settings(transport);
 
     // TUI display
-    let display_name = if manifest.files.len() == 1 {
-        manifest.files[0].name.clone()
-    } else {
-        format!("{} files", manifest.files.len())
-    };
+    let (display_name, display_overflow_count) = build_send_display_label(&manifest);
+    let display_files = manifest
+        .files
+        .iter()
+        .take(5)
+        .map(|f| f.name.clone())
+        .collect::<Vec<_>>();
 
     // Send specific session
     let total_chunks = manifest.total_chunks(transfer_settings.chunk_size);
@@ -56,7 +86,7 @@ pub async fn start_send_server(
     );
     let app = routes::create_send_router(&send_state);
 
-    let server = ServerInstance::new(app, display_name);
+    let server = ServerInstance::new(app, display_name, display_files, display_overflow_count);
 
     // Call runtime functions directly with typed state
     match transport {
@@ -115,7 +145,7 @@ pub async fn start_receive_server(
     );
     let app = routes::create_receive_router(&receive_state);
 
-    let server = ServerInstance::new(app, display_name);
+    let server = ServerInstance::new(app, display_name, Vec::new(), None);
 
     // Call runtime functions directly with typed state
     match transport {
@@ -141,5 +171,58 @@ pub async fn start_receive_server(
             )
             .await
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::TransferSettings;
+
+    fn manifest_with_names(names: &[&str]) -> Manifest {
+        Manifest {
+            files: names
+                .iter()
+                .enumerate()
+                .map(|(index, name)| crate::common::FileEntry {
+                    index,
+                    name: (*name).to_string(),
+                    full_path: PathBuf::from(name),
+                    relative_path: (*name).to_string(),
+                    size: 1,
+                    nonce: "nonce".to_string(),
+                })
+                .collect(),
+            config: TransferSettings {
+                chunk_size: 1024,
+                concurrency: 1,
+            },
+        }
+    }
+
+    #[test]
+    fn display_label_uses_single_filename_without_overflow() {
+        let manifest = manifest_with_names(&["one.txt"]);
+        let (label, overflow) = build_send_display_label(&manifest);
+        assert_eq!(label, "one.txt");
+        assert_eq!(overflow, None);
+    }
+
+    #[test]
+    fn display_label_joins_up_to_five_filenames() {
+        let manifest = manifest_with_names(&["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"]);
+        let (label, overflow) = build_send_display_label(&manifest);
+        assert_eq!(label, "a.txt, b.txt, c.txt, d.txt, e.txt");
+        assert_eq!(overflow, None);
+    }
+
+    #[test]
+    fn display_label_adds_overflow_after_five_filenames() {
+        let manifest = manifest_with_names(&[
+            "a.txt", "b.txt", "c.txt", "d.txt", "e.txt", "f.txt", "g.txt",
+        ]);
+        let (label, overflow) = build_send_display_label(&manifest);
+        assert_eq!(label, "a.txt, b.txt, c.txt, d.txt, e.txt");
+        assert_eq!(overflow, Some(2));
     }
 }

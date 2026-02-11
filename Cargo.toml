@@ -34,7 +34,7 @@ sha2 = "0.10.9"
 sysinfo = "0.30"
 tailscale-localapi = "0.4.2"
 thiserror = "1.0"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["full", "tracing"] }
 tokio-util = "0.7"
 toml = "0.8"
 tower-http = { version = "0.6", features = ["cors"] }
@@ -42,7 +42,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 uuid = { version = "1.6", features = ["v4"] }
 walkdir = "2.5"
-console-subscriber = "0.4"
+console-subscriber = "0.5"
+zip = "0.6"
 
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["json", "multipart"] }

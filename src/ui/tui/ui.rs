@@ -9,6 +9,17 @@ pub fn generate_qr(url: &str) -> Result<String> {
         .render::<unicode::Dense1x2>()
         .dark_color(unicode::Dense1x2::Light)
         .light_color(unicode::Dense1x2::Dark)
-        .quiet_zone(false)
+        .quiet_zone(true)
         .build())
+}
+
+pub(crate) fn generate_compact_qr(url: &str) -> Option<String> {
+    let code = QrCode::new(url.as_bytes()).ok()?;
+    Some(
+        code.render::<unicode::Dense1x2>()
+            .dark_color(unicode::Dense1x2::Light)
+            .light_color(unicode::Dense1x2::Dark)
+            .quiet_zone(false)
+            .build(),
+    )
 }

@@ -1,5 +1,10 @@
+//! Terminal UI modules: runtime, layout, panels, links, and QR utilities.
+
+mod connection;
+mod hyperlink;
 mod output;
 mod render;
+mod transfer_panel;
 mod types;
 mod ui;
 

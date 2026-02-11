@@ -123,6 +123,7 @@ impl Default for TuiSettings {
 #[serde(default)]
 pub struct AppConfig {
     pub default_transport: Transport,
+    pub zip: bool,
     pub local: LocalSettings,
     pub cloudflare: CloudflareSettings,
     pub tailscale: TailscaleSettings,
@@ -189,6 +190,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             default_transport: Transport::Local,
+            zip: false,
             local: LocalSettings::default(),
             cloudflare: CloudflareSettings::default(),
             tailscale: TailscaleSettings::default(),

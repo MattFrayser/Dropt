@@ -42,7 +42,7 @@ impl Session {
             .expect("valid 32-byte AES-256 key");
         let cipher = Arc::new(LessSafeKey::new(unbound));
 
-        tracing::debug!("Created new session with token: '{}'", token);
+        tracing::debug!("Created new session");
 
         Self {
             token,
@@ -73,11 +73,7 @@ impl Session {
     /// Claims an unclaimed session and returns the server-issued lock token.
     pub fn claim(&self, token: &str) -> Result<String, ClaimError> {
         if token != self.token {
-            tracing::warn!(
-                "Session claim rejected: token mismatch (expected: '{}', got: '{}')",
-                self.token,
-                token
-            );
+            tracing::warn!("Session claim rejected: token mismatch");
             return Err(ClaimError::InvalidToken);
         }
 

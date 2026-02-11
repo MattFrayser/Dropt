@@ -13,6 +13,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
+fn no_tui_enabled() -> bool {
+    std::env::var("NO_TUI").is_ok()
+}
+
 /// Start a direct HTTPS server and run one transfer session.
 pub async fn start_https<S: TransferState>(
     server: ServerInstance,
@@ -23,9 +27,13 @@ pub async fn start_https<S: TransferState>(
     tracker: Arc<ProgressTracker>,
 ) -> Result<u16> {
     let service = app_state.service_path();
-    let ServerInstance { app, display_name } = server;
+    let ServerInstance {
+        app,
+        display_name,
+        display_files,
+        display_overflow_count,
+    } = server;
 
-    let local_server_spinner = spinner("Starting local HTTPS server...");
     let (port, server_handle) = match start_local_server(
         app,
         Protocol::Https,
@@ -34,17 +42,8 @@ pub async fn start_https<S: TransferState>(
     )
     .await
     {
-        Ok(result) => {
-            spinner_success(
-                &local_server_spinner,
-                &format!("Local HTTPS server ready on port {}", result.0),
-            );
-            result
-        }
-        Err(err) => {
-            spinner_error(&local_server_spinner, "Failed to start local HTTPS server");
-            return Err(err);
-        }
+        Ok(result) => result,
+        Err(err) => return Err(err),
     };
 
     // Use local IP instead of localhost for network access
@@ -59,13 +58,17 @@ pub async fn start_https<S: TransferState>(
         nonce.to_base64()
     );
 
-    println!("{}", url);
+    if no_tui_enabled() {
+        println!("{}", url);
+    }
 
     run_session(
         server_handle,
         app_state,
         None,
         display_name,
+        display_files,
+        display_overflow_count,
         tracker,
         url,
         transport,
@@ -85,9 +88,13 @@ pub async fn start_tunnel<S: TransferState>(
     tracker: Arc<ProgressTracker>,
 ) -> Result<u16> {
     let service = app_state.service_path();
-    let ServerInstance { app, display_name } = server;
+    let ServerInstance {
+        app,
+        display_name,
+        display_files,
+        display_overflow_count,
+    } = server;
 
-    let local_server_spinner = spinner("Starting local HTTP server...");
     let (port, server_handle) = match start_local_server(
         app,
         Protocol::Http,
@@ -96,17 +103,8 @@ pub async fn start_tunnel<S: TransferState>(
     )
     .await
     {
-        Ok(result) => {
-            spinner_success(
-                &local_server_spinner,
-                &format!("Local HTTP server ready on port {}", result.0),
-            );
-            result
-        }
-        Err(err) => {
-            spinner_error(&local_server_spinner, "Failed to start local HTTP server");
-            return Err(err);
-        }
+        Ok(result) => result,
+        Err(err) => return Err(err),
     };
 
     let tunnel_spinner = spinner(match transport {
@@ -136,13 +134,17 @@ pub async fn start_tunnel<S: TransferState>(
         app_state.session().session_key_b64(),
         nonce.to_base64()
     );
-    println!("{}", url);
+    if no_tui_enabled() {
+        println!("{}", url);
+    }
 
     run_session(
         server_handle,
         app_state,
         Some(tunnel),
         display_name,
+        display_files,
+        display_overflow_count,
         tracker,
         url,
         transport,
@@ -160,6 +162,8 @@ async fn run_session<S: TransferState>(
     state: S,
     mut tunnel: Option<Tunnel>,
     display_name: String,
+    display_files: Vec<String>,
+    display_overflow_count: Option<usize>,
     tracker: Arc<ProgressTracker>,
     url: String,
     transport: Transport,
@@ -173,7 +177,7 @@ async fn run_session<S: TransferState>(
     let (status_sender, status_receiver) = tokio::sync::watch::channel(None);
 
     // Spawn TUI (can be disabled with NO_TUI=1 for debugging)
-    let tui_handle = if std::env::var("NO_TUI").is_ok() {
+    let tui_handle = if no_tui_enabled() {
         // No TUI mode - poll tracker for completion
         println!("TUI disabled. Press Ctrl+C to stop.");
         tokio::spawn(async move {
@@ -197,6 +201,8 @@ async fn run_session<S: TransferState>(
             url,
             qr_code,
             display_name,
+            display_files,
+            display_overflow_count,
             show_qr: config.tui.show_qr,
             show_url: config.tui.show_url,
         };

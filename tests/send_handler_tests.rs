@@ -384,8 +384,13 @@ async fn test_chunk_requires_active_session() {
     let request = build_get_request("/send/0/chunk/0", &token, None);
     let response = app.oneshot(request).await.expect("Failed to send request");
 
-    assert_error_response(response, StatusCode::UNAUTHORIZED, "unauthorized", "missing transfer")
-        .await;
+    assert_error_response(
+        response,
+        StatusCode::UNAUTHORIZED,
+        "unauthorized",
+        "missing transfer",
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -406,8 +411,13 @@ async fn test_invalid_lock_token_rejected() {
     let request = build_get_request("/send/0/chunk/0", &token, Some(&bad_lock));
     let response = app.oneshot(request).await.expect("Failed to send request");
 
-    assert_error_response(response, StatusCode::UNAUTHORIZED, "unauthorized", "session not active")
-        .await;
+    assert_error_response(
+        response,
+        StatusCode::UNAUTHORIZED,
+        "unauthorized",
+        "session not active",
+    )
+    .await;
 }
 
 //===================
@@ -433,8 +443,13 @@ async fn test_chunk_index_out_of_bounds() {
     let request = build_get_request("/send/0/chunk/999", &token, Some(&lock_token));
     let response = app.oneshot(request).await.expect("Failed to send request");
 
-    assert_error_response(response, StatusCode::INTERNAL_SERVER_ERROR, "internal_error", "internal")
-        .await;
+    assert_error_response(
+        response,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "internal_error",
+        "internal",
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -455,8 +470,13 @@ async fn test_file_index_out_of_bounds() {
     let request = build_get_request("/send/999/chunk/0", &token, Some(&lock_token));
     let response = app.oneshot(request).await.expect("Failed to send request");
 
-    assert_error_response(response, StatusCode::BAD_REQUEST, "bad_request", "file_index")
-        .await;
+    assert_error_response(
+        response,
+        StatusCode::BAD_REQUEST,
+        "bad_request",
+        "file_index",
+    )
+    .await;
 }
 
 #[tokio::test]

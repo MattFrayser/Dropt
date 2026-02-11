@@ -97,6 +97,7 @@ fn is_benign_off_failure(stderr: &str) -> bool {
         || normalized.contains("nothing")
         || normalized.contains("already")
         || normalized.contains("no serve config")
+        || normalized.contains("handler does not exist")
 }
 
 fn map_start_error(err: TailscaleError) -> anyhow::Error {
@@ -206,7 +207,7 @@ impl TailscaleTunnel {
     async fn off_funnel<B: TailscaleBackend + Sync>(&self, backend: &B) -> Result<()> {
         let port_arg = self.port.to_string();
         let output = backend
-            .run(&["funnel", "--bg", &port_arg, "off"])
+            .run(&["funnel", &format!("--https={}", port_arg), "off"])
             .await
             .context("Failed to disable Tailscale funnel")?;
 
@@ -333,7 +334,7 @@ mod tests {
 
         let calls = backend.calls();
         assert_eq!(calls[0], vec!["funnel", "--bg", "443"]);
-        assert_eq!(calls[1], vec!["funnel", "--bg", "443", "off"]);
+        assert_eq!(calls[1], vec!["funnel", "--https=443", "off"]);
     }
 
     #[tokio::test]
@@ -364,5 +365,12 @@ mod tests {
     fn binary_missing_is_typed() {
         let err = TailscaleError::BinaryMissing;
         assert!(matches!(err, TailscaleError::BinaryMissing));
+    }
+
+    #[test]
+    fn handler_does_not_exist_is_benign_off_failure() {
+        assert!(is_benign_off_failure(
+            "error: failed to remove web serve: handler does not exist"
+        ));
     }
 }
