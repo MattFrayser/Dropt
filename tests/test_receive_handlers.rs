@@ -1,9 +1,9 @@
 mod common;
 
-use archdrop::crypto::types::{EncryptionKey, Nonce};
-use archdrop::receive::ReceiveAppState;
-use archdrop::server::progress::ProgressTracker;
-use archdrop::server::routes;
+use dropt::crypto::types::{EncryptionKey, Nonce};
+use dropt::receive::ReceiveAppState;
+use dropt::server::progress::ProgressTracker;
+use dropt::server::routes;
 use axum::{
     body::Body,
     http::{Method, Request, StatusCode},
@@ -175,7 +175,7 @@ async fn test_complete_file_upload() {
     // Send chunk
     let cipher = create_cipher(&key);
     let mut encrypted = file_data.to_vec();
-    archdrop::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted, 0)
+    dropt::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted, 0)
         .expect("Failed to encrypt chunk");
 
     let request = with_lock_token(
@@ -273,7 +273,7 @@ async fn test_out_of_order_chunks() {
 
     // Chunk 2
     let mut encrypted2 = chunk2.clone();
-    archdrop::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted2, 2)
+    dropt::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted2, 2)
         .expect("Failed to encrypt chunk 2");
     let request = with_lock_token(
         build_multipart_request(
@@ -295,7 +295,7 @@ async fn test_out_of_order_chunks() {
 
     // Chunk 0
     let mut encrypted0 = chunk0.clone();
-    archdrop::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted0, 0)
+    dropt::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted0, 0)
         .expect("Failed to encrypt chunk 0");
     let request = with_lock_token(
         build_multipart_request(
@@ -317,7 +317,7 @@ async fn test_out_of_order_chunks() {
 
     // Chunk 1
     let mut encrypted1 = chunk1.clone();
-    archdrop::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted1, 1)
+    dropt::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted1, 1)
         .expect("Failed to encrypt chunk 1");
     let request = with_lock_token(
         build_multipart_request(
@@ -414,7 +414,7 @@ async fn test_concurrent_chunks_same_file() {
             // Encrypt
             let cipher = create_cipher(&key);
             let mut encrypted = chunk_data.clone();
-            archdrop::crypto::encrypt_chunk_in_place(
+            dropt::crypto::encrypt_chunk_in_place(
                 &cipher,
                 &nonce,
                 &mut encrypted,
@@ -518,7 +518,7 @@ async fn test_chunk_wrong_nonce() {
     // Encrypt with WRONG nonce
     let cipher = create_cipher(&key);
     let mut encrypted = data.to_vec();
-    archdrop::crypto::encrypt_chunk_in_place(&cipher, &wrong_nonce, &mut encrypted, 0)
+    dropt::crypto::encrypt_chunk_in_place(&cipher, &wrong_nonce, &mut encrypted, 0)
         .expect("Failed to encrypt chunk");
 
     // Upload chunk with correct nonce in metadata but wrong encrypted data
@@ -561,7 +561,7 @@ async fn test_chunk_without_manifest() {
     let nonce = Nonce::new();
     let cipher = create_cipher(&key);
     let mut encrypted = data.to_vec();
-    archdrop::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted, 0)
+    dropt::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted, 0)
         .expect("Failed to encrypt chunk");
 
     // Skip manifest, send chunk directly
@@ -623,7 +623,7 @@ async fn test_duplicate_chunk_detection() {
     // Encrypt chunk
     let cipher = create_cipher(&key);
     let mut encrypted = data.to_vec();
-    archdrop::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted, 0)
+    dropt::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted, 0)
         .expect("Failed to encrypt chunk");
 
     // Upload chunk 0
@@ -712,7 +712,7 @@ async fn test_premature_finalize_does_not_break_chunk_retries() {
 
     // Upload first chunk only
     let mut encrypted0 = chunk0.clone();
-    archdrop::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted0, 0)
+    dropt::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted0, 0)
         .expect("Failed to encrypt chunk 0");
     let request = with_lock_token(
         build_multipart_request(
@@ -748,7 +748,7 @@ async fn test_premature_finalize_does_not_break_chunk_retries() {
 
     // Retry remaining chunk should still work after failed finalize
     let mut encrypted1 = chunk1.clone();
-    archdrop::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted1, 1)
+    dropt::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted1, 1)
         .expect("Failed to encrypt chunk 1");
     let request = with_lock_token(
         build_multipart_request(

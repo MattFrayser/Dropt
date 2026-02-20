@@ -2,8 +2,8 @@
 
 pub mod config_test_utils;
 
-use archdrop::common::TransferSettings;
-use archdrop::crypto::types::EncryptionKey;
+use dropt::common::TransferSettings;
+use dropt::crypto::types::EncryptionKey;
 use aws_lc_rs::aead::{LessSafeKey, UnboundKey, AES_256_GCM};
 use tempfile::TempDir;
 

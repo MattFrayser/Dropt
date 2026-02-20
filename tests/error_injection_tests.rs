@@ -10,10 +10,10 @@
 
 mod common;
 
-use archdrop::crypto::types::{EncryptionKey, Nonce};
-use archdrop::receive::ReceiveAppState;
-use archdrop::server::progress::ProgressTracker;
-use archdrop::server::routes;
+use dropt::crypto::types::{EncryptionKey, Nonce};
+use dropt::receive::ReceiveAppState;
+use dropt::server::progress::ProgressTracker;
+use dropt::server::routes;
 use axum::{
     body::Body,
     http::{Method, Request, StatusCode},
@@ -232,7 +232,7 @@ async fn test_chunk_size_mismatch() {
     let nonce = Nonce::new();
 
     let mut encrypted = oversized_chunk.clone();
-    archdrop::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted, 0)
+    dropt::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted, 0)
         .expect("Failed to encrypt chunk");
 
     let request = build_multipart_request(

@@ -24,39 +24,39 @@ impl Drop for EnvRestore {
         }
 
         if let Some(value) = self.local_port.take() {
-            std::env::set_var("ARCHDROP_LOCAL_PORT", value);
+            std::env::set_var("DROPT_LOCAL_PORT", value);
         } else {
-            std::env::remove_var("ARCHDROP_LOCAL_PORT");
+            std::env::remove_var("DROPT_LOCAL_PORT");
         }
 
         if let Some(value) = self.cloudflare_port.take() {
-            std::env::set_var("ARCHDROP_CLOUDFLARE_PORT", value);
+            std::env::set_var("DROPT_CLOUDFLARE_PORT", value);
         } else {
-            std::env::remove_var("ARCHDROP_CLOUDFLARE_PORT");
+            std::env::remove_var("DROPT_CLOUDFLARE_PORT");
         }
 
         if let Some(value) = self.tailscale_port.take() {
-            std::env::set_var("ARCHDROP_TAILSCALE_PORT", value);
+            std::env::set_var("DROPT_TAILSCALE_PORT", value);
         } else {
-            std::env::remove_var("ARCHDROP_TAILSCALE_PORT");
+            std::env::remove_var("DROPT_TAILSCALE_PORT");
         }
 
         if let Some(value) = self.default_transport.take() {
-            std::env::set_var("ARCHDROP_DEFAULT_TRANSPORT", value);
+            std::env::set_var("DROPT_DEFAULT_TRANSPORT", value);
         } else {
-            std::env::remove_var("ARCHDROP_DEFAULT_TRANSPORT");
+            std::env::remove_var("DROPT_DEFAULT_TRANSPORT");
         }
 
         if let Some(value) = self.zip.take() {
-            std::env::set_var("ARCHDROP_ZIP", value);
+            std::env::set_var("DROPT_ZIP", value);
         } else {
-            std::env::remove_var("ARCHDROP_ZIP");
+            std::env::remove_var("DROPT_ZIP");
         }
     }
 }
 
 fn write_config(temp_dir: &TempDir, contents: &str) {
-    let app_config_dir = temp_dir.path().join("archdrop");
+    let app_config_dir = temp_dir.path().join("dropt");
     std::fs::create_dir_all(&app_config_dir).expect("create config dir");
     std::fs::write(app_config_dir.join("config.toml"), contents).expect("write config");
 }
@@ -69,19 +69,19 @@ pub fn with_config_env<T>(config_toml: &str, f: impl FnOnce() -> T) -> T {
 
     let restore = EnvRestore {
         xdg_config_home: std::env::var_os("XDG_CONFIG_HOME"),
-        local_port: std::env::var_os("ARCHDROP_LOCAL_PORT"),
-        cloudflare_port: std::env::var_os("ARCHDROP_CLOUDFLARE_PORT"),
-        tailscale_port: std::env::var_os("ARCHDROP_TAILSCALE_PORT"),
-        default_transport: std::env::var_os("ARCHDROP_DEFAULT_TRANSPORT"),
-        zip: std::env::var_os("ARCHDROP_ZIP"),
+        local_port: std::env::var_os("DROPT_LOCAL_PORT"),
+        cloudflare_port: std::env::var_os("DROPT_CLOUDFLARE_PORT"),
+        tailscale_port: std::env::var_os("DROPT_TAILSCALE_PORT"),
+        default_transport: std::env::var_os("DROPT_DEFAULT_TRANSPORT"),
+        zip: std::env::var_os("DROPT_ZIP"),
     };
 
     std::env::set_var("XDG_CONFIG_HOME", temp_dir.path());
-    std::env::remove_var("ARCHDROP_LOCAL_PORT");
-    std::env::remove_var("ARCHDROP_CLOUDFLARE_PORT");
-    std::env::remove_var("ARCHDROP_TAILSCALE_PORT");
-    std::env::remove_var("ARCHDROP_DEFAULT_TRANSPORT");
-    std::env::remove_var("ARCHDROP_ZIP");
+    std::env::remove_var("DROPT_LOCAL_PORT");
+    std::env::remove_var("DROPT_CLOUDFLARE_PORT");
+    std::env::remove_var("DROPT_TAILSCALE_PORT");
+    std::env::remove_var("DROPT_DEFAULT_TRANSPORT");
+    std::env::remove_var("DROPT_ZIP");
 
     let result = f();
     drop(restore);

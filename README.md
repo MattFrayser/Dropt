@@ -1,9 +1,9 @@
-# ArchDrop
+# Dropt
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
 
 Secure peer-to-peer file transfer CLI for Linux. Transfer files directly between your devices without uploading to cloud services.
 
-## Why ArchDrop?
+## Why Dropt?
   - **Zero Cloud Storage**: Files transfer directly peer-to-peer
   - **Cross-Platform**: Linux CLI ↔ Any device with web browser
   - **Privacy First**: No data retention, sessions auto-destruct after transfer
@@ -23,9 +23,19 @@ Secure peer-to-peer file transfer CLI for Linux. Transfer files directly between
 
 ## Installation
 
+### Install prebuilt binary (recommended)
+
+Run the installer from the latest GitHub release:
+
+```bash
+curl -fsSL https://github.com/MattFrayser/ArchDrop/releases/latest/download/install.sh | bash
+```
+
+### Build from source
+
 ```bash
 cargo build --release
-sudo cp target/release/archdrop /usr/local/bin/
+sudo install -m 0755 target/release/dropt /usr/local/bin/dropt
 ```
 
 ## Usage
@@ -34,31 +44,31 @@ sudo cp target/release/archdrop /usr/local/bin/
 
 ```bash
 # Local network (HTTPS on your host, best for trusted LAN)
-archdrop send file.txt --via local
+dropt send file.txt --via local
 
 # Internet-accessible via Cloudflare tunnel
-archdrop send file.txt --via cloudflare
+dropt send file.txt --via cloudflare
 
 # Internet-accessible via Tailscale funnel
-archdrop send file.txt --via tailscale
+dropt send file.txt --via tailscale
 
 # Apply port only to selected transport
-archdrop send file.txt --via local --port 8443
+dropt send file.txt --via local --port 8443
 ```
 
 ### Receive Files
 
 ```bash
 # Receive files to current directory
-archdrop receive --via local
+dropt receive --via local
 
 # Receive files to specific directory
-archdrop receive ~/Downloads --via cloudflare
+dropt receive ~/Downloads --via cloudflare
 ```
 
 ### Transfer Flow
 
-1. Run `archdrop send` or `archdrop receive` on your Linux machine
+1. Run `dropt send` or `dropt receive` on your Linux machine
 2. Scan the QR code with your phone/other device
 3. Files are encrypted client-side and transferred directly
 4. Server shuts down automatically after transfer completes
@@ -67,8 +77,8 @@ archdrop receive ~/Downloads --via cloudflare
 
 ### Config File Path
 
-- Linux default path: `~/.config/archdrop/config.toml`
-- Print active path at runtime: `archdrop config path`
+- Linux default path: `~/.config/dropt/config.toml`
+- Print active path at runtime: `dropt config path`
 
 ### Precedence Order
 
@@ -76,7 +86,7 @@ Configuration is layered in this order:
 
 1. Built-in defaults
 2. Config file (`config.toml`)
-3. Environment variables (`ARCHDROP_*`)
+3. Environment variables (`DROPT_*`)
 4. CLI flags (`--via`, `--port`)
 
 In short: `defaults < file < env < CLI`.
@@ -87,8 +97,8 @@ In short: `defaults < file < env < CLI`.
 
 - Effective transport = `--via` if provided, otherwise `default_transport` from config.
 - Examples:
-  - `archdrop send file.txt --via cloudflare --port 7000` only changes Cloudflare port for this run.
-  - `archdrop send file.txt --port 7000` changes port for whatever `default_transport` is.
+  - `dropt send file.txt --via cloudflare --port 7000` only changes Cloudflare port for this run.
+  - `dropt send file.txt --port 7000` changes port for whatever `default_transport` is.
 
 ### Config Example
 
@@ -120,8 +130,8 @@ show_url = true
 Environment override examples:
 
 ```bash
-ARCHDROP_LOCAL_PORT=8443 archdrop send file.txt --via local
-ARCHDROP_CLOUDFLARE_CONCURRENCY=4 archdrop send file.txt --via cloudflare
+DROPT_LOCAL_PORT=8443 dropt send file.txt --via local
+DROPT_CLOUDFLARE_CONCURRENCY=4 dropt send file.txt --via cloudflare
 ```
 
 ## Tunnel Providers

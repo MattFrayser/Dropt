@@ -1,4 +1,4 @@
-use archdrop::server::auth::{BearerToken, LockToken, LOCK_HEADER_NAME};
+use dropt::server::auth::{BearerToken, LockToken, LOCK_HEADER_NAME};
 use axum::{
     body::Body,
     http::{Method, Request, StatusCode},

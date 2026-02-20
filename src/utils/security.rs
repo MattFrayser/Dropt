@@ -354,7 +354,7 @@ mod tests {
 
     #[test]
     fn confine_receive_path_rejects_invalid_root() {
-        let root = std::env::temp_dir().join(format!("archdrop-missing-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("dropt-missing-{}", std::process::id()));
 
         let result = confine_receive_path(&root, "file.txt");
 

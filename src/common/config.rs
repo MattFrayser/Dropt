@@ -29,9 +29,9 @@ const TAILSCALE_TRANSFER: TransferSettings = TransferSettings {
 };
 
 pub fn config_path() -> PathBuf {
-    ProjectDirs::from("", "", "archdrop")
+    ProjectDirs::from("", "", "dropt")
         .map(|p| p.config_dir().join("config.toml"))
-        .unwrap_or_else(|| PathBuf::from("archdrop.toml"))
+        .unwrap_or_else(|| PathBuf::from("dropt.toml"))
 }
 
 /// Transfer tuning parameters shared by all transports.
@@ -213,7 +213,7 @@ pub fn load_config() -> Result<AppConfig> {
     let config: AppConfig = Figment::new()
         .merge(Serialized::defaults(AppConfig::default()))
         .merge(Toml::file(&path))
-        .merge(Env::prefixed("ARCHDROP_").split("_"))
+        .merge(Env::prefixed("DROPT_").split("_"))
         .extract()
         .context("Failed to load configuration")?;
 

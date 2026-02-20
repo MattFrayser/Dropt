@@ -1,6 +1,6 @@
 mod common;
 
-use archdrop::receive::ChunkStorage;
+use dropt::receive::ChunkStorage;
 use common::setup_temp_dir;
 
 //===============

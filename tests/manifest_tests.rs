@@ -1,6 +1,6 @@
 mod common;
 
-use archdrop::common::Manifest;
+use dropt::common::Manifest;
 use base64::Engine;
 use common::default_config;
 use tempfile::TempDir;

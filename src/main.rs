@@ -1,5 +1,5 @@
 use anyhow::{ensure, Context, Result};
-use archdrop::{
+use dropt::{
     common::{config, config_commands, ConfigOverrides, Manifest, Transport},
     send, server,
 };
@@ -10,7 +10,7 @@ use walkdir::WalkDir;
 
 // Clap for CLI w/ arg parsing
 #[derive(Parser)]
-#[command(name = "archdrop")]
+#[command(name = "dropt")]
 #[command(about = "Secure file transfer")]
 struct Cli {
     // subcommands
@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn send_zip_flag_parses() {
-        let cli = Cli::parse_from(["archdrop", "send", "--zip", "file.txt"]);
+        let cli = Cli::parse_from(["dropt", "send", "--zip", "file.txt"]);
         match cli.command {
             Commands::Send { zip, no_zip, .. } => {
                 assert!(zip);
@@ -243,7 +243,7 @@ mod tests {
 
     #[test]
     fn send_zip_flag_defaults_false() {
-        let cli = Cli::parse_from(["archdrop", "send", "file.txt"]);
+        let cli = Cli::parse_from(["dropt", "send", "file.txt"]);
         match cli.command {
             Commands::Send { zip, no_zip, .. } => {
                 assert!(!zip);
@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn send_no_zip_flag_parses() {
-        let cli = Cli::parse_from(["archdrop", "send", "--no-zip", "file.txt"]);
+        let cli = Cli::parse_from(["dropt", "send", "--no-zip", "file.txt"]);
         match cli.command {
             Commands::Send { zip, no_zip, .. } => {
                 assert!(!zip);

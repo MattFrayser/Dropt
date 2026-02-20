@@ -1,5 +1,5 @@
-use archdrop::crypto::types::{EncryptionKey, Nonce};
-use archdrop::crypto::{decrypt_chunk_in_place, encrypt_chunk_in_place};
+use dropt::crypto::types::{EncryptionKey, Nonce};
+use dropt::crypto::{decrypt_chunk_in_place, encrypt_chunk_in_place};
 use aws_lc_rs::aead::{LessSafeKey, UnboundKey, AES_256_GCM};
 
 fn make_key(key: &EncryptionKey) -> LessSafeKey {

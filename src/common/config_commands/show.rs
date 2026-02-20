@@ -42,13 +42,13 @@ mod tests {
 
     #[test]
     fn path_command_writes_display_path() {
-        let path = std::path::Path::new("/tmp/archdrop-config.toml");
+        let path = std::path::Path::new("/tmp/dropt-config.toml");
         let mut out = Vec::new();
 
         path_config_with_writer(path, &mut out).expect("path output should succeed");
 
         let text = String::from_utf8(out).expect("utf8");
-        assert_eq!(text, "/tmp/archdrop-config.toml\n");
+        assert_eq!(text, "/tmp/dropt-config.toml\n");
     }
 
     #[test]

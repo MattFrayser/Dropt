@@ -12,13 +12,13 @@
 
 mod common;
 
-use archdrop::common::Session;
-use archdrop::common::TransferSettings;
-use archdrop::crypto::types::{EncryptionKey, Nonce};
-use archdrop::receive::ChunkStorage;
-use archdrop::receive::ReceiveAppState;
-use archdrop::server::progress::ProgressTracker;
-use archdrop::server::routes;
+use dropt::common::Session;
+use dropt::common::TransferSettings;
+use dropt::crypto::types::{EncryptionKey, Nonce};
+use dropt::receive::ChunkStorage;
+use dropt::receive::ReceiveAppState;
+use dropt::server::progress::ProgressTracker;
+use dropt::server::routes;
 use axum::{
     body::Body,
     http::{Method, Request, StatusCode},
@@ -207,7 +207,7 @@ async fn test_concurrent_different_files_same_directory() {
 
             let cipher = create_cipher(&key);
             let mut encrypted = chunk_data.clone();
-            archdrop::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted, 0)
+            dropt::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted, 0)
                 .expect("Failed to encrypt chunk");
 
             let request = with_lock_token(
@@ -332,7 +332,7 @@ async fn test_concurrent_chunks_different_files() {
 
                 let cipher = create_cipher(&key);
                 let mut encrypted = chunk_data.clone();
-                archdrop::crypto::encrypt_chunk_in_place(
+                dropt::crypto::encrypt_chunk_in_place(
                     &cipher,
                     &nonce,
                     &mut encrypted,
@@ -565,7 +565,7 @@ async fn test_concurrent_chunk_uploads_mutex_contention() {
 
             let cipher = create_cipher(&key);
             let mut encrypted = chunk_data.clone();
-            archdrop::crypto::encrypt_chunk_in_place(
+            dropt::crypto::encrypt_chunk_in_place(
                 &cipher,
                 &nonce,
                 &mut encrypted,
@@ -691,7 +691,7 @@ async fn test_concurrent_upload_smoke() {
 
             let cipher = create_cipher(&key);
             let mut encrypted = chunk_data.clone();
-            archdrop::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted, 0)
+            dropt::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted, 0)
                 .expect("Failed to encrypt chunk");
 
             let request = with_lock_token(
@@ -776,7 +776,7 @@ async fn test_concurrent_chunks_smoke() {
 
             let cipher = create_cipher(&key);
             let mut encrypted = chunk_data.clone();
-            archdrop::crypto::encrypt_chunk_in_place(
+            dropt::crypto::encrypt_chunk_in_place(
                 &cipher,
                 &nonce,
                 &mut encrypted,

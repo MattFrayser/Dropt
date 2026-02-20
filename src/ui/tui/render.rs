@@ -266,7 +266,7 @@ impl TransferUI {
         };
         let logo = BigText::builder()
             .pixel_size(LOGO_PIXEL_SIZE)
-            .lines(vec!["ARCHDROP".into()])
+            .lines(vec!["DROPT".into()])
             .style(Style::default().fg(ACCENT))
             .alignment(Alignment::Center)
             .build();

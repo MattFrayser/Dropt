@@ -1,11 +1,11 @@
 mod common;
 
-use archdrop::common::Manifest;
-use archdrop::common::Session;
-use archdrop::crypto::types::EncryptionKey;
-use archdrop::receive::ReceiveAppState;
-use archdrop::send::SendAppState;
-use archdrop::server::progress::ProgressTracker;
+use dropt::common::Manifest;
+use dropt::common::Session;
+use dropt::crypto::types::EncryptionKey;
+use dropt::receive::ReceiveAppState;
+use dropt::send::SendAppState;
+use dropt::server::progress::ProgressTracker;
 use common::default_config;
 use std::sync::Arc;
 use tempfile::TempDir;

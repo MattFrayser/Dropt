@@ -1,6 +1,6 @@
 mod common;
 
-use archdrop::common::config::{apply_overrides, load_config, ConfigOverrides, Transport};
+use dropt::common::config::{apply_overrides, load_config, ConfigOverrides, Transport};
 use common::config_test_utils::with_config_env;
 
 #[test]
@@ -11,7 +11,7 @@ fn precedence_defaults_file_env_cli() {
         port = 1111
         "#,
         || {
-            std::env::set_var("ARCHDROP_LOCAL_PORT", "2222");
+            std::env::set_var("DROPT_LOCAL_PORT", "2222");
 
             let overrides = ConfigOverrides {
                 transport: Some(Transport::Local),
@@ -33,7 +33,7 @@ fn precedence_defaults_file_env_without_cli() {
         port = 1111
         "#,
         || {
-            std::env::set_var("ARCHDROP_LOCAL_PORT", "2222");
+            std::env::set_var("DROPT_LOCAL_PORT", "2222");
 
             let config = load_config().expect("load config");
             assert_eq!(config.port(Transport::Local), 2222);
@@ -69,7 +69,7 @@ fn zip_env_overrides_config_file() {
         zip = false
         "#,
         || {
-            std::env::set_var("ARCHDROP_ZIP", "true");
+            std::env::set_var("DROPT_ZIP", "true");
             let config = load_config().expect("load config");
             assert!(config.zip);
         },

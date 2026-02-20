@@ -1,6 +1,6 @@
 mod common;
 
-use archdrop::common::config::{
+use dropt::common::config::{
     apply_overrides, load_config, AppConfig, ConfigOverrides, Transport,
 };
 use common::config_test_utils::with_config_env;

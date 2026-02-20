@@ -38,7 +38,7 @@ pub async fn start_local_server(
     let addr = bind_addr(bind_scope, port);
     let listener = std::net::TcpListener::bind(addr).context(
         "Failed to bind to port - port already in use.\n\n\
-         Is another archdrop instance running?\n\
+         Is another dropt instance running?\n\
          Or is another service using this port?",
     )?;
 

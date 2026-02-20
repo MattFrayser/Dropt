@@ -1,10 +1,10 @@
 mod common;
 
-use archdrop::common::Manifest;
-use archdrop::crypto::types::{EncryptionKey, Nonce};
-use archdrop::send::SendAppState;
-use archdrop::server::progress::ProgressTracker;
-use archdrop::server::routes;
+use dropt::common::Manifest;
+use dropt::crypto::types::{EncryptionKey, Nonce};
+use dropt::send::SendAppState;
+use dropt::server::progress::ProgressTracker;
+use dropt::server::routes;
 use axum::{
     body::Body,
     http::{Method, Request, StatusCode},
@@ -204,7 +204,7 @@ async fn test_manifest_handler_returns_file_list() {
 
         // Nonce should be valid base64
         let nonce_str = file["nonce"].as_str().unwrap();
-        assert!(archdrop::crypto::types::Nonce::from_base64(nonce_str).is_ok());
+        assert!(dropt::crypto::types::Nonce::from_base64(nonce_str).is_ok());
     }
 }
 
@@ -285,7 +285,7 @@ async fn test_chunk_decryption_correctness() {
 
         // Decrypt
         let mut decrypted = encrypted_chunk.clone();
-        archdrop::crypto::decrypt_chunk_in_place(
+        dropt::crypto::decrypt_chunk_in_place(
             &cipher,
             &file_nonce,
             &mut decrypted,
@@ -547,7 +547,7 @@ async fn test_last_chunk_partial_size() {
 
     // Decrypt
     let mut decrypted = encrypted_chunk;
-    archdrop::crypto::decrypt_chunk_in_place(&cipher, &file_nonce, &mut decrypted, 2)
+    dropt::crypto::decrypt_chunk_in_place(&cipher, &file_nonce, &mut decrypted, 2)
         .expect("Failed to decrypt chunk");
 
     // Last chunk should be 0.5MB, not 1MB

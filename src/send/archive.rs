@@ -62,7 +62,7 @@ pub fn create_temp_zip_archive(inputs: &[PathBuf]) -> Result<TempArchive> {
         anyhow::bail!("No files found for zip archive");
     }
 
-    let archive_path = std::env::temp_dir().join(format!("archdrop-{}.zip", Uuid::new_v4()));
+    let archive_path = std::env::temp_dir().join(format!("dropt-{}.zip", Uuid::new_v4()));
     write_zip_archive(&archive_path, &entries)?;
     Ok(TempArchive { path: archive_path })
 }

@@ -1,6 +1,6 @@
 mod common;
 
-use archdrop::common::config::{load_config, MAX_TRANSFER_CHUNK_SIZE_BYTES};
+use dropt::common::config::{load_config, MAX_TRANSFER_CHUNK_SIZE_BYTES};
 use common::config_test_utils::with_config_env;
 
 #[test]

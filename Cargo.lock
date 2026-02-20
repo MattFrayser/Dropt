@@ -106,55 +106,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69f7f8c3906b62b754cd5326047894316021dcfe5a194c8ea52bdd94934a3457"
 
 [[package]]
-name = "archdrop"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "aws-lc-rs",
- "axum 0.7.9",
- "axum-server",
- "axum_typed_multipart",
- "base64 0.21.7",
- "bytes",
- "clap",
- "console",
- "console-subscriber",
- "crossterm",
- "dashmap",
- "directories",
- "figment",
- "futures",
- "hex",
- "http-body-util",
- "indicatif",
- "positioned-io",
- "qrcode",
- "rand",
- "ratatui",
- "rcgen",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "sysinfo",
- "tailscale-localapi",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tokio-util",
- "toml",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "tui-big-text",
- "uuid",
- "walkdir",
- "zip",
-]
-
-[[package]]
 name = "async-trait"
 version = "0.1.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -863,6 +814,55 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "dropt"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "aws-lc-rs",
+ "axum 0.7.9",
+ "axum-server",
+ "axum_typed_multipart",
+ "base64 0.21.7",
+ "bytes",
+ "clap",
+ "console",
+ "console-subscriber",
+ "crossterm",
+ "dashmap",
+ "directories",
+ "figment",
+ "futures",
+ "hex",
+ "http-body-util",
+ "indicatif",
+ "positioned-io",
+ "qrcode",
+ "rand",
+ "ratatui",
+ "rcgen",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sysinfo",
+ "tailscale-localapi",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "toml",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "tui-big-text",
+ "uuid",
+ "walkdir",
+ "zip",
 ]
 
 [[package]]

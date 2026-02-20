@@ -1,5 +1,5 @@
-use archdrop::common::TransferProgress;
-use archdrop::server::progress::ProgressTracker;
+use dropt::common::TransferProgress;
+use dropt::server::progress::ProgressTracker;
 
 #[test]
 fn progress_tracker_snapshot_uses_shared_transfer_progress_type() {

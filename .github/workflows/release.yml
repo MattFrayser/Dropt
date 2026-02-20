@@ -1,0 +1,49 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  test-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: swatinem/rust-cache@v2
+
+      - name: Validate installer script syntax
+        run: bash -n scripts/install.sh
+
+      - name: Run tests
+        run: cargo test --tests --locked
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Package release archive
+        run: |
+          cp target/release/dropt dropt
+          chmod +x dropt
+          tar -czf dropt-linux-x86_64.tar.gz dropt
+
+      - name: Generate checksums
+        run: sha256sum dropt-linux-x86_64.tar.gz > checksums.txt
+
+      - name: Publish GitHub release artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            scripts/install.sh
+            dropt-linux-x86_64.tar.gz
+            checksums.txt
