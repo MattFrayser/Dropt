@@ -8,7 +8,7 @@ pub mod manifest;
 pub mod progress;
 pub mod session_core;
 
-pub use config::{AppConfig, ConfigOverrides, TransferSettings, Transport};
+pub use config::{AppConfig, CollisionPolicy, ConfigOverrides, TransferSettings, Transport};
 pub use errors::AppError;
 pub use manifest::{FileEntry, Manifest};
 pub use progress::{FileProgress, FileStatus, TransferProgress};

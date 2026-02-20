@@ -1,7 +1,7 @@
 //! High-level server builders for send and receive modes.
 
 use super::runtime;
-use crate::common::config::{AppConfig, Transport};
+use crate::common::config::{AppConfig, CollisionPolicy, Transport};
 use crate::common::Manifest;
 use crate::crypto::types::{EncryptionKey, Nonce};
 use crate::receive::ReceiveAppState;
@@ -119,6 +119,7 @@ pub async fn start_send_server(
 pub async fn start_receive_server(
     destination: PathBuf,
     transport: Transport,
+    collision_policy: CollisionPolicy,
     config: &AppConfig,
 ) -> Result<u16> {
     let session_key = EncryptionKey::new();
@@ -142,6 +143,7 @@ pub async fn start_receive_server(
         destination,
         progress_tracker.clone(),
         transfer_settings,
+        collision_policy,
     );
     let app = routes::create_receive_router(&receive_state);
 

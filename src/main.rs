@@ -1,9 +1,9 @@
 use anyhow::{ensure, Context, Result};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use dropt::{
-    common::{config, config_commands, ConfigOverrides, Manifest, Transport},
+    common::{config, config_commands, CollisionPolicy, ConfigOverrides, Manifest, Transport},
     send, server,
 };
-use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 use tracing_subscriber::EnvFilter;
 use walkdir::WalkDir;
@@ -55,6 +55,14 @@ enum Commands {
         #[arg(default_value = ".", help = "Destination directory")]
         destination: PathBuf,
 
+        #[arg(
+            long = "conflict",
+            short = 'C',
+            value_enum,
+            help = "File collision policy (default: suffix)"
+        )]
+        conflict: Option<CliCollisionPolicy>,
+
         #[command(flatten)]
         args: CliArgs,
     },
@@ -62,6 +70,25 @@ enum Commands {
         #[command(subcommand)]
         action: ConfigAction,
     },
+}
+
+// CLI mirror type for CollisionPolicy.
+// Keeps clap out of the lib crate: lib = serde only, binary = clap only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum CliCollisionPolicy {
+    Suffix,
+    Overwrite,
+    Skip,
+}
+
+impl From<CliCollisionPolicy> for CollisionPolicy {
+    fn from(value: CliCollisionPolicy) -> Self {
+        match value {
+            CliCollisionPolicy::Suffix => CollisionPolicy::Suffix,
+            CliCollisionPolicy::Overwrite => CollisionPolicy::Overwrite,
+            CliCollisionPolicy::Skip => CollisionPolicy::Skip,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -81,6 +108,7 @@ impl From<CliTransport> for Transport {
     }
 }
 
+/// Command line arguments shared between Send and Recieve
 #[derive(Args, Debug, Clone, Default)]
 struct CliArgs {
     /// Transport method (overrides config default)
@@ -174,7 +202,11 @@ async fn main() -> Result<()> {
 
             drop(temp_archive);
         }
-        Commands::Receive { destination, args } => {
+        Commands::Receive {
+            destination,
+            conflict,
+            args,
+        } => {
             let overrides = ConfigOverrides::from(&args);
             let config = config::apply_overrides(config::load_config()?, &overrides);
 
@@ -191,8 +223,9 @@ async fn main() -> Result<()> {
             );
 
             let transport = overrides.transport.unwrap_or(config.default_transport);
+            let collision_policy = conflict.map(Into::into).unwrap_or(config.on_conflict);
 
-            server::start_receive_server(destination, transport, &config)
+            server::start_receive_server(destination, transport, collision_policy, &config)
                 .await
                 .context("Failed to start file receiver")?;
         }

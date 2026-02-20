@@ -28,11 +28,9 @@ const TAILSCALE_TRANSFER: TransferSettings = TransferSettings {
     concurrency: 4,
 };
 
-pub fn config_path() -> PathBuf {
-    ProjectDirs::from("", "", "dropt")
-        .map(|p| p.config_dir().join("config.toml"))
-        .unwrap_or_else(|| PathBuf::from("dropt.toml"))
-}
+/*
+ *  TUNNEL SETTINGS
+ */
 
 /// Transfer tuning parameters shared by all transports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -101,6 +99,10 @@ impl Default for TailscaleSettings {
     }
 }
 
+/*
+ *  TUI SETTINGS
+ */
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TuiSettings {
@@ -117,6 +119,23 @@ impl Default for TuiSettings {
     }
 }
 
+/*
+ * RECIEVE SPECIFIC SETTINGS
+ */
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum CollisionPolicy {
+    #[default]
+    Suffix,
+    Overwrite,
+    Skip,
+}
+
+/*
+ * APP CONFIG
+ */
+
 /// Fully resolved application configuration after all layers merge.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -127,6 +146,7 @@ pub struct AppConfig {
     pub cloudflare: CloudflareSettings,
     pub tailscale: TailscaleSettings,
     pub tui: TuiSettings,
+    pub on_conflict: CollisionPolicy,
 }
 
 impl AppConfig {
@@ -194,6 +214,7 @@ impl Default for AppConfig {
             cloudflare: CloudflareSettings::default(),
             tailscale: TailscaleSettings::default(),
             tui: TuiSettings::default(),
+            on_conflict: CollisionPolicy::default(),
         }
     }
 }
@@ -204,6 +225,13 @@ pub struct ConfigOverrides {
     pub transport: Option<Transport>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub port: Option<u16>,
+}
+
+/// Get path to config
+pub fn config_path() -> PathBuf {
+    ProjectDirs::from("", "", "dropt")
+        .map(|p| p.config_dir().join("config.toml"))
+        .unwrap_or_else(|| PathBuf::from("dropt.toml"))
 }
 
 /// Loads config from defaults/file/env.

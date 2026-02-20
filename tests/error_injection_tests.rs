@@ -10,6 +10,7 @@
 
 mod common;
 
+use dropt::common::CollisionPolicy;
 use dropt::crypto::types::{EncryptionKey, Nonce};
 use dropt::receive::ReceiveAppState;
 use dropt::server::progress::ProgressTracker;
@@ -28,7 +29,7 @@ use tower::ServiceExt;
 fn create_test_app(output_dir: PathBuf, key: EncryptionKey) -> (Router, ReceiveAppState) {
     let progress = Arc::new(ProgressTracker::new());
     let config = default_config();
-    let state = ReceiveAppState::new(key, output_dir, progress, config);
+    let state = ReceiveAppState::new(key, output_dir, progress, config, CollisionPolicy::default());
     let app = routes::create_receive_router(&state);
     (app, state)
 }

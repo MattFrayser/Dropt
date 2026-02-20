@@ -12,6 +12,7 @@
 
 mod common;
 
+use dropt::common::CollisionPolicy;
 use dropt::common::Session;
 use dropt::common::TransferSettings;
 use dropt::crypto::types::{EncryptionKey, Nonce};
@@ -43,7 +44,7 @@ fn create_test_app_with_config(
     config: TransferSettings,
 ) -> (Router, ReceiveAppState) {
     let progress = Arc::new(ProgressTracker::new());
-    let state = ReceiveAppState::new(key, output_dir, progress, config);
+    let state = ReceiveAppState::new(key, output_dir, progress, config, CollisionPolicy::default());
     let app = routes::create_receive_router(&state);
     (app, state)
 }

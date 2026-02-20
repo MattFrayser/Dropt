@@ -1,5 +1,6 @@
 mod common;
 
+use dropt::common::CollisionPolicy;
 use dropt::common::Manifest;
 use dropt::common::Session;
 use dropt::crypto::types::EncryptionKey;
@@ -18,7 +19,7 @@ async fn test_receive_session_creation() {
     let progress = Arc::new(ProgressTracker::new());
     let config = default_config();
 
-    let state = ReceiveAppState::new(key, dest_path.clone(), progress, config);
+    let state = ReceiveAppState::new(key, dest_path.clone(), progress, config, CollisionPolicy::default());
     let token = state.session.token().to_string();
 
     assert!(!token.is_empty(), "Token should not be empty");

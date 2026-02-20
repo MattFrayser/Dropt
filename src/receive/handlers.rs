@@ -1,13 +1,14 @@
 //! HTTP handlers for manifest intake, chunk upload, and completion.
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::common::manifest::validate_nonce_counter_chunks;
 use crate::common::AppError;
 use crate::crypto::types::Nonce;
 use crate::receive::state::{FileReceiveState, ReceiveAppState};
-use crate::receive::storage::{self, ChunkStorage};
+use crate::receive::storage::{self, resolve_collision, ChunkStorage, CollisionResolution};
 use crate::server::auth::{self, BearerToken, LockToken};
 use crate::utils::security;
 use anyhow::{Context, Result};
@@ -81,60 +82,96 @@ pub async fn receive_manifest(
     storage::check_disk_space(destination, total_size)
         .map_err(|e| AppError::InsufficientStorage(e.to_string()))?;
 
-    let mut session_total_chunks = 0;
-    let file_count = manifest.files.len();
+    let mut session_total_chunks = 0u64;
+    let mut skipped_files: Vec<String> = Vec::new();
 
-    // Collect file names and chunk totals for progress tracker
-    let mut progress_names: Vec<String> = Vec::with_capacity(file_count);
-    let mut progress_totals: Vec<u64> = Vec::with_capacity(file_count);
-
-    // Precreate file sessions to prevent race conditions during parallel upload
-    for (file_index, file) in manifest.files.into_iter().enumerate() {
-        let file_chunks = file.size.div_ceil(chunk_size);
-        session_total_chunks += file_chunks;
-
-        let file_id = security::hash_path(&file.relative_path);
-
-        // Extract filename for progress tracking
+    // Pass 1: resolve collision for every file and collect results.
+    // All files (skipped or not) are registered in the progress tracker so the
+    // TUI can show skipped status and complete correctly even if every file is skipped.
+    let mut resolved: Vec<(ClientManifestEntry, String, Option<PathBuf>)> = Vec::new();
+    for file in manifest.files.into_iter() {
         let filename = std::path::Path::new(&file.relative_path)
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or(&file.relative_path)
             .to_string();
 
-        progress_names.push(filename);
-        progress_totals.push(file_chunks);
-
-        // Validate + confine path under receive destination root
         let dest_path = security::confine_receive_path(destination, &file.relative_path)
             .map_err(|e| AppError::BadRequest(format!("bad path: {}", e)))?;
 
-        // Initialize storage (creates/truncates file) safely here in serial order
-        let storage = ChunkStorage::new(dest_path, file.size, chunk_size)
+        let resolved_path = match resolve_collision(state.collision_policy, dest_path)
             .await
-            .context("create storage")?;
-
-        let new_state = FileReceiveState {
-            storage,
-            total_chunks: file_chunks as usize,
-            nonce: String::new(), // Will be populated by the first arriving chunk
-            relative_path: file.relative_path,
-            file_size: file.size,
-            file_index,
+            .context("collision resolution")?
+        {
+            CollisionResolution::Use(path) => Some(path),
+            CollisionResolution::Skip => None,
         };
 
-        receive_session.insert(file_id, Arc::new(Mutex::new(new_state)));
+        resolved.push((file, filename, resolved_path));
     }
 
-    // Update session with total chunks
+    // Init progress tracker with ALL files so skipped ones appear in the TUI
+    let progress_names: Vec<String> = resolved
+        .iter()
+        .map(|(_, name, _): &(ClientManifestEntry, String, Option<PathBuf>)| name.clone())
+        .collect();
+    let progress_totals: Vec<u64> = resolved
+        .iter()
+        .map(|(file, _, _): &(ClientManifestEntry, String, Option<PathBuf>)| {
+            file.size.div_ceil(chunk_size)
+        })
+        .collect();
+    state.progress.init_files(progress_names, progress_totals);
+
+    // Pass 2: create sessions for kept files, mark skipped ones terminal in tracker
+    for (progress_index, (file, _, resolved_path)) in resolved.into_iter().enumerate() {
+        let file_chunks = file.size.div_ceil(chunk_size);
+        let file_id = security::hash_path(&file.relative_path);
+
+        match resolved_path {
+            None => {
+                skipped_files.push(file.relative_path.clone());
+                state
+                    .progress
+                    .file_skipped(progress_index, "already exists".to_string());
+            }
+            Some(path) => {
+                session_total_chunks += file_chunks;
+
+                // Initialize storage safely in serial order to prevent upload races
+                let storage = ChunkStorage::new(path, file.size, chunk_size)
+                    .await
+                    .context("create storage")?;
+
+                let new_state = FileReceiveState {
+                    storage,
+                    total_chunks: file_chunks as usize,
+                    nonce: String::new(), // populated by first arriving chunk
+                    relative_path: file.relative_path,
+                    file_size: file.size,
+                    file_index: progress_index,
+                };
+
+                receive_session.insert(file_id, Arc::new(Mutex::new(new_state)));
+            }
+        }
+    }
+
+    // Update session with total non-skipped chunks
     state.set_total_chunks(session_total_chunks);
 
-    // Initialize progress tracker with all files at once
-    state.progress.init_files(progress_names, progress_totals);
+    if !skipped_files.is_empty() {
+        tracing::info!(
+            count = skipped_files.len(),
+            files = ?skipped_files,
+            "files skipped due to collision policy"
+        );
+    }
 
     Ok(Json(json!({
         "success": true,
         "total_chunks": session_total_chunks,
+        "skipped_files": skipped_files,
         "config": state.config,
         "lockToken": lock_token
     })))

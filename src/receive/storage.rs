@@ -8,9 +8,10 @@ use std::path::PathBuf;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
+use crate::common::config::CollisionPolicy;
+
 /// Manages file assembly from chunks arriving in any order.
 ///
-/// Collision: `file.txt` → `file (1).txt` (preserves extensions: `a.tar.gz` → `a (1).tar.gz`)
 /// RAII: `disarmed=false` → Drop deletes file. Set `true` after finalization.
 pub struct ChunkStorage {
     file: File,
@@ -18,7 +19,7 @@ pub struct ChunkStorage {
     chunks_received: HashSet<usize>,
     expected_chunks: usize,
     expected_size: u64,
-    disarmed: bool, // false -> delete files on drop
+    disarmed: bool,
     chunk_size: u64,
 }
 
@@ -311,5 +312,42 @@ pub fn check_disk_space(destination: &std::path::Path, bytes: u64) -> Result<()>
             "Cannot determine available disk space for {:?}.",
             destination
         )),
+    }
+}
+
+pub enum CollisionResolution {
+    Use(PathBuf),
+    Skip,
+}
+
+/// Resolves a file path against an existing file according to the collision policy.
+///
+/// - `Suffix`: passes the path through unchanged; [`ChunkStorage`] handles suffix numbering on create.
+/// - `Overwrite`: deletes the existing file if present, returns the original path for fresh creation.
+/// - `Skip`: returns [`CollisionResolution::Skip`] if the file already exists, otherwise passes through.
+///
+/// # Errors
+///
+/// Returns an error if `Overwrite` fails to remove the existing file.
+pub async fn resolve_collision(
+    policy: CollisionPolicy,
+    path: PathBuf,
+) -> Result<CollisionResolution> {
+    match policy {
+        CollisionPolicy::Suffix => Ok(CollisionResolution::Use(path)),
+        CollisionPolicy::Overwrite => {
+            if path.exists() {
+                tokio::fs::remove_file(&path).await?;
+            }
+
+            Ok(CollisionResolution::Use(path))
+        }
+        CollisionPolicy::Skip => {
+            if path.exists() {
+                Ok(CollisionResolution::Skip)
+            } else {
+                Ok(CollisionResolution::Use(path))
+            }
+        }
     }
 }

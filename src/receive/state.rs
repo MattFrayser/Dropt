@@ -1,6 +1,6 @@
 //! Shared receive-session state and transfer-state.
 
-use crate::common::config::TransferSettings;
+use crate::common::config::{CollisionPolicy, TransferSettings};
 use crate::common::{Session, TransferState};
 use crate::crypto::types::EncryptionKey;
 use crate::receive::storage::ChunkStorage;
@@ -35,6 +35,7 @@ pub struct ReceiveAppStateInner {
     pub progress: Arc<ProgressTracker>,
     pub receive_sessions: Arc<DashMap<String, Arc<Mutex<FileReceiveState>>>>,
     pub config: TransferSettings,
+    pub collision_policy: CollisionPolicy,
     total_chunks: Arc<AtomicU64>,
     chunks_received: Arc<AtomicU64>,
 }
@@ -54,6 +55,7 @@ impl ReceiveAppState {
         destination: PathBuf,
         progress: Arc<ProgressTracker>,
         config: TransferSettings,
+        collision_policy: CollisionPolicy,
     ) -> Self {
         Self {
             inner: Arc::new(ReceiveAppStateInner {
@@ -62,6 +64,7 @@ impl ReceiveAppState {
                 progress,
                 receive_sessions: Arc::new(DashMap::new()),
                 config,
+                collision_policy,
                 total_chunks: Arc::new(AtomicU64::new(0)),
                 chunks_received: Arc::new(AtomicU64::new(0)),
             }),
@@ -156,6 +159,7 @@ mod tests {
                 chunk_size: 1024,
                 concurrency: 1,
             },
+            CollisionPolicy::default(),
         );
 
         let cloned = state.clone();

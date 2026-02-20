@@ -157,8 +157,31 @@ async function uploadFiles(selectedFiles) {
         const transferConfig = manifestResponse.config
         console.timeEnd('Manifest upload');
 
+        const skippedFiles = new Set(manifestResponse.skipped_files ?? []);
+
+        // Mark skipped file items in the UI before uploading
+        selectedFiles.forEach((file, index) => {
+            if (skippedFiles.has(file.webkitRelativePath || file.name)) {
+                const fileItem = fileItems[index];
+                fileItem.classList.add('skipped');
+                const progressText = fileItem.querySelector('.progress-text');
+                if (progressText) progressText.textContent = 'Skipped (already exists)';
+                const progress = fileItem.querySelector('.file-progress');
+                if (progress) progress.classList.remove('show');
+            }
+        });
+
+        if (skippedFiles.size > 0) {
+            console.log(`Skipping ${skippedFiles.size} file(s) already at destination:`, [...skippedFiles]);
+        }
+
+        // Build upload tasks preserving original selectedFiles indices so fileItem mapping stays correct
+        const uploadTasks = selectedFiles
+            .map((file, index) => ({ file, index, fileItem: fileItems[index] }))
+            .filter(({ file }) => !skippedFiles.has(file.webkitRelativePath || file.name));
+
         await runWithConcurrency(
-            selectedFiles.map((file, index) => ({ file, index, fileItem: fileItems[index] })),
+            uploadTasks,
             async ({ file, fileItem }) => {
                 const relativePath = file.webkitRelativePath || file.name
 
