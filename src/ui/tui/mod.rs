@@ -4,6 +4,7 @@ mod connection;
 mod hyperlink;
 mod output;
 mod render;
+mod styles;
 mod transfer_panel;
 mod types;
 mod ui;

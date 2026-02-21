@@ -6,6 +6,7 @@ use ratatui::{
     Frame,
 };
 
+use super::styles::muted_style;
 use super::types::{FileProgress, FileStatus, TransferProgress};
 
 const MAX_VISIBLE_FILE_ROWS: usize = 5;
@@ -210,12 +211,6 @@ fn render_file_status_row(frame: &mut Frame, area: Rect, row: &FileListRow) {
         .style(status_style)
         .alignment(Alignment::Right);
     frame.render_widget(status, chunks[1]);
-}
-
-fn muted_style() -> Style {
-    Style::default()
-        .fg(Color::DarkGray)
-        .add_modifier(Modifier::DIM)
 }
 
 #[cfg(test)]

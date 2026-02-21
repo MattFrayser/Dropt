@@ -88,12 +88,6 @@ impl ReceiveAppState {
         (chunks_received, total)
     }
 
-    /// Return transfer progress as `(received, total)`.
-    pub fn get_progress(&self) -> (u64, u64) {
-        let received = self.chunks_received.load(Ordering::SeqCst);
-        let total = self.total_chunks.load(Ordering::SeqCst);
-        (received, total)
-    }
 }
 
 #[async_trait::async_trait]

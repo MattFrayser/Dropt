@@ -1,12 +1,13 @@
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::Span,
     widgets::{Block, BorderType, Borders, Paragraph},
     Frame,
 };
 
 use super::hyperlink::Hyperlink;
+use super::styles::muted_style;
 use super::types::TuiConfig;
 
 const SCAN_LABEL_RIGHT_NUDGE: u16 = 1;
@@ -226,12 +227,6 @@ fn render_qr_too_small(frame: &mut Frame, area: Rect) {
         .style(muted_style())
         .alignment(Alignment::Center);
     frame.render_widget(msg, area);
-}
-
-fn muted_style() -> Style {
-    Style::default()
-        .fg(Color::DarkGray)
-        .add_modifier(Modifier::DIM)
 }
 
 fn render_url(frame: &mut Frame, area: Rect, url: &str, url_color: Color) {
