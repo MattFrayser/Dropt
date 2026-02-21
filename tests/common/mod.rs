@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
 pub mod config_test_utils;
+pub mod receive_http;
+pub mod send_http;
 
 use dropt::common::TransferSettings;
 use dropt::crypto::types::EncryptionKey;

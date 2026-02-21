@@ -1,19 +1,16 @@
 mod common;
 
-use dropt::common::Manifest;
 use dropt::crypto::types::{EncryptionKey, Nonce};
-use dropt::send::SendAppState;
-use dropt::server::progress::ProgressTracker;
-use dropt::server::routes;
 use axum::{
-    body::Body,
-    http::{Method, Request, StatusCode},
+    http::{Method, StatusCode},
     Router,
 };
-use common::{create_cipher, default_config, setup_temp_dir, CHUNK_SIZE};
-use http_body_util::BodyExt;
+use common::send_http::{
+    assert_error_response, build_bearer_request, create_send_test_app, extract_bytes,
+    extract_json,
+};
+use common::{create_cipher, setup_temp_dir, CHUNK_SIZE};
 use std::path::PathBuf;
-use std::sync::Arc;
 use tempfile::TempDir;
 use tower::ServiceExt;
 
@@ -35,59 +32,15 @@ async fn create_test_files(temp_dir: &TempDir, files: Vec<(&str, &[u8])>) -> Vec
     paths
 }
 
-// Create send router with state
 async fn create_test_send_app(
     file_paths: Vec<PathBuf>,
     key: EncryptionKey,
-) -> (Router, SendAppState, u64) {
-    let config = default_config();
-    let manifest = Manifest::new(file_paths, None, config)
-        .await
-        .expect("Failed to create manifest");
-
-    let total_chunks = manifest
-        .files
-        .iter()
-        .map(|f| f.size.div_ceil(CHUNK_SIZE as u64))
-        .sum();
-
-    let progress = Arc::new(ProgressTracker::new());
-    let state = SendAppState::new(key, manifest, total_chunks, progress, config);
-    let app = routes::create_send_router(&state);
-
-    (app, state, total_chunks)
-}
-
-// Helper to build GET request with query params and auth header
-fn build_get_request(uri: &str, token: &str, lock_token: Option<&str>) -> Request<Body> {
-    let mut builder = Request::builder()
-        .method(Method::GET)
-        .uri(uri)
-        .header("Authorization", format!("Bearer {}", token));
-    if let Some(lock) = lock_token {
-        builder = builder.header("X-Transfer-Lock", lock);
-    }
-    builder
-        .body(Body::empty())
-        .expect("Failed to build request")
-}
-
-// Helper to build POST request with auth header
-fn build_post_request(uri: &str, token: &str, lock_token: Option<&str>) -> Request<Body> {
-    let mut builder = Request::builder()
-        .method(Method::POST)
-        .uri(uri)
-        .header("Authorization", format!("Bearer {}", token));
-    if let Some(lock) = lock_token {
-        builder = builder.header("X-Transfer-Lock", lock);
-    }
-    builder
-        .body(Body::empty())
-        .expect("Failed to build request")
+) -> (Router, dropt::send::SendAppState, u64) {
+    create_send_test_app(file_paths, key).await
 }
 
 async fn claim_lock_token(app: &Router, token: &str) -> String {
-    let request = build_get_request("/send/manifest", token, None);
+    let request = build_bearer_request(Method::GET, "/send/manifest", token, None);
     let response = app
         .clone()
         .oneshot(request)
@@ -99,47 +52,6 @@ async fn claim_lock_token(app: &Router, token: &str) -> String {
         .as_str()
         .expect("manifest should include lockToken")
         .to_string()
-}
-
-// Helper to extract JSON from response
-async fn extract_json(response: axum::response::Response) -> serde_json::Value {
-    let body_bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("Failed to collect body")
-        .to_bytes();
-    serde_json::from_slice(&body_bytes).expect("Failed to parse JSON")
-}
-
-async fn assert_error_response(
-    response: axum::response::Response,
-    expected_status: StatusCode,
-    expected_type: &str,
-    expected_message_contains: &str,
-) {
-    assert_eq!(response.status(), expected_status);
-    let json = extract_json(response).await;
-    assert_eq!(json["error"]["type"], expected_type);
-    let message = json["error"]["message"]
-        .as_str()
-        .expect("error.message should be a string")
-        .to_lowercase();
-    assert!(
-        message.contains(&expected_message_contains.to_lowercase()),
-        "error message should contain '{expected_message_contains}', got '{message}'"
-    );
-}
-
-// Helper to extract bytes from response
-async fn extract_bytes(response: axum::response::Response) -> Vec<u8> {
-    response
-        .into_body()
-        .collect()
-        .await
-        .expect("Failed to collect body")
-        .to_bytes()
-        .to_vec()
 }
 
 //===================
@@ -154,7 +66,7 @@ async fn test_health_check() {
     let paths = create_test_files(&temp_dir, vec![("test.txt", file_data)]).await;
     let (app, _state, _) = create_test_send_app(paths, key.clone()).await;
 
-    let request = build_get_request("/health", "unused", None);
+    let request = build_bearer_request(Method::GET, "/health", "unused", None);
     let response = app.oneshot(request).await.expect("Failed to send request");
 
     assert_eq!(response.status(), StatusCode::OK);
@@ -184,7 +96,7 @@ async fn test_manifest_handler_returns_file_list() {
 
     // Request manifest
     let token = state.session.token();
-    let request = build_get_request("/send/manifest", token, None);
+    let request = build_bearer_request(Method::GET, "/send/manifest", token, None);
     let response = app.oneshot(request).await.expect("Failed to send request");
 
     // Verify response
@@ -224,7 +136,7 @@ async fn test_chunk_handler_returns_encrypted_data() {
     let lock_token = claim_lock_token(&app, &token).await;
 
     // Request chunk 1 (middle chunk)
-    let request = build_get_request("/send/0/chunk/1", &token, Some(&lock_token));
+    let request = build_bearer_request(Method::GET, "/send/0/chunk/1", &token, Some(&lock_token));
     let response = app.oneshot(request).await.expect("Failed to send request");
 
     // Verify response
@@ -258,7 +170,7 @@ async fn test_chunk_decryption_correctness() {
     let token = state.session.token().to_string();
 
     // Claim session
-    let manifest_req = build_get_request("/send/manifest", &token, None);
+    let manifest_req = build_bearer_request(Method::GET, "/send/manifest", &token, None);
     let manifest_resp = app
         .clone()
         .oneshot(manifest_req)
@@ -272,7 +184,7 @@ async fn test_chunk_decryption_correctness() {
     // Download and decrypt each chunk
     for chunk_idx in 0..3 {
         let chunk_uri = format!("/send/0/chunk/{}", chunk_idx);
-        let request = build_get_request(&chunk_uri, &token, Some(&lock_token));
+        let request = build_bearer_request(Method::GET, &chunk_uri, &token, Some(&lock_token));
         let response = app
             .clone()
             .oneshot(request)
@@ -320,8 +232,18 @@ async fn test_complete_download_succeeds() {
     // Claim session
     let lock_token = claim_lock_token(&app, &token).await;
 
+    // Fetch required chunk before completing transfer
+    let chunk_request =
+        build_bearer_request(Method::GET, "/send/0/chunk/0", &token, Some(&lock_token));
+    let chunk_response = app
+        .clone()
+        .oneshot(chunk_request)
+        .await
+        .expect("Failed to fetch chunk");
+    assert_eq!(chunk_response.status(), StatusCode::OK);
+
     // Complete download
-    let request = build_post_request("/send/complete", &token, Some(&lock_token));
+    let request = build_bearer_request(Method::POST, "/send/complete", &token, Some(&lock_token));
     let response = app.oneshot(request).await.expect("Failed to send request");
 
     assert_eq!(response.status(), StatusCode::OK);
@@ -346,7 +268,7 @@ async fn test_manifest_requires_claim() {
     let token = state.session.token().to_string();
 
     // First claim should succeed
-    let request = build_get_request("/send/manifest", &token, None);
+    let request = build_bearer_request(Method::GET, "/send/manifest", &token, None);
     let response = app
         .clone()
         .oneshot(request)
@@ -357,7 +279,7 @@ async fn test_manifest_requires_claim() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Second claim should fail (already claimed)
-    let request2 = build_get_request("/send/manifest", &token, None);
+    let request2 = build_bearer_request(Method::GET, "/send/manifest", &token, None);
     let response2 = app.oneshot(request2).await.expect("Failed to send request");
 
     assert_error_response(
@@ -381,7 +303,7 @@ async fn test_chunk_requires_active_session() {
     let token = state.session.token().to_string();
 
     // Try to request chunk without claiming session first
-    let request = build_get_request("/send/0/chunk/0", &token, None);
+    let request = build_bearer_request(Method::GET, "/send/0/chunk/0", &token, None);
     let response = app.oneshot(request).await.expect("Failed to send request");
 
     assert_error_response(
@@ -408,7 +330,7 @@ async fn test_invalid_lock_token_rejected() {
 
     // Try to request chunk with wrong lock token
     let bad_lock = format!("{}-bad", lock_token);
-    let request = build_get_request("/send/0/chunk/0", &token, Some(&bad_lock));
+    let request = build_bearer_request(Method::GET, "/send/0/chunk/0", &token, Some(&bad_lock));
     let response = app.oneshot(request).await.expect("Failed to send request");
 
     assert_error_response(
@@ -440,7 +362,7 @@ async fn test_chunk_index_out_of_bounds() {
     let lock_token = claim_lock_token(&app, &token).await;
 
     // Request chunk 999 (out of bounds)
-    let request = build_get_request("/send/0/chunk/999", &token, Some(&lock_token));
+    let request = build_bearer_request(Method::GET, "/send/0/chunk/999", &token, Some(&lock_token));
     let response = app.oneshot(request).await.expect("Failed to send request");
 
     assert_error_response(
@@ -467,7 +389,7 @@ async fn test_file_index_out_of_bounds() {
     let lock_token = claim_lock_token(&app, &token).await;
 
     // Request file index 999 (out of bounds)
-    let request = build_get_request("/send/999/chunk/0", &token, Some(&lock_token));
+    let request = build_bearer_request(Method::GET, "/send/999/chunk/0", &token, Some(&lock_token));
     let response = app.oneshot(request).await.expect("Failed to send request");
 
     assert_error_response(
@@ -496,7 +418,7 @@ async fn test_duplicate_chunk_request_idempotent() {
     // Request same chunk twice
     let chunk_uri = "/send/0/chunk/0";
 
-    let request1 = build_get_request(chunk_uri, &token, Some(&lock_token));
+    let request1 = build_bearer_request(Method::GET, chunk_uri, &token, Some(&lock_token));
     let response1 = app
         .clone()
         .oneshot(request1)
@@ -504,7 +426,7 @@ async fn test_duplicate_chunk_request_idempotent() {
         .expect("Failed to send request");
     let data1 = extract_bytes(response1).await;
 
-    let request2 = build_get_request(chunk_uri, &token, Some(&lock_token));
+    let request2 = build_bearer_request(Method::GET, chunk_uri, &token, Some(&lock_token));
     let response2 = app.oneshot(request2).await.expect("Failed to send request");
     let data2 = extract_bytes(response2).await;
 
@@ -526,7 +448,7 @@ async fn test_last_chunk_partial_size() {
     let cipher = create_cipher(&key);
 
     // Claim session and get nonce
-    let manifest_req = build_get_request("/send/manifest", &token, None);
+    let manifest_req = build_bearer_request(Method::GET, "/send/manifest", &token, None);
     let manifest_resp = app
         .clone()
         .oneshot(manifest_req)
@@ -538,7 +460,7 @@ async fn test_last_chunk_partial_size() {
     let file_nonce = Nonce::from_base64(file_nonce_str).unwrap();
 
     // Request last chunk (chunk 2)
-    let request = build_get_request("/send/0/chunk/2", &token, Some(&lock_token));
+    let request = build_bearer_request(Method::GET, "/send/0/chunk/2", &token, Some(&lock_token));
     let response = app.oneshot(request).await.expect("Failed to send request");
 
     assert_eq!(response.status(), StatusCode::OK);
@@ -553,4 +475,49 @@ async fn test_last_chunk_partial_size() {
     // Last chunk should be 0.5MB, not 1MB
     assert_eq!(decrypted.len(), CHUNK_SIZE / 2);
     assert!(decrypted.iter().all(|&b| b == 0xCC));
+}
+
+// Issue 1: incomplete transfer must be rejected, not silently marked complete
+#[tokio::test]
+async fn test_complete_rejected_when_chunks_not_all_served() {
+    let temp_dir = setup_temp_dir();
+    let key = EncryptionKey::new();
+
+    let file_data = b"Small file content"; // 1 chunk, but we won't fetch it
+    let paths = create_test_files(&temp_dir, vec![("test.txt", file_data)]).await;
+
+    let (app, state, _) = create_test_send_app(paths, key.clone()).await;
+    let token = state.session.token().to_string();
+    let lock_token = claim_lock_token(&app, &token).await;
+
+    // Complete WITHOUT fetching any chunks
+    let request = build_bearer_request(Method::POST, "/send/complete", &token, Some(&lock_token));
+    let response = app.oneshot(request).await.expect("Failed to send request");
+
+    assert_error_response(response, StatusCode::BAD_REQUEST, "bad_request", "incomplete").await;
+}
+
+// Issue 2: out-of-bounds chunk_index must not inflate the sent chunk count
+#[tokio::test]
+async fn test_out_of_bounds_chunk_does_not_increment_sent_count() {
+    let temp_dir = setup_temp_dir();
+    let key = EncryptionKey::new();
+
+    let file_data = vec![0xAA; CHUNK_SIZE / 2]; // 1 chunk
+    let paths = create_test_files(&temp_dir, vec![("small.bin", &file_data)]).await;
+
+    let (app, state, _) = create_test_send_app(paths, key.clone()).await;
+    let token = state.session.token().to_string();
+    let lock_token = claim_lock_token(&app, &token).await;
+
+    // Request out-of-bounds chunk (process_chunk will reject it)
+    let request = build_bearer_request(Method::GET, "/send/0/chunk/999", &token, Some(&lock_token));
+    let response = app.oneshot(request).await.expect("Failed to send request");
+
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(
+        state.unique_chunks_sent(),
+        0,
+        "failed chunk request must not increment sent_chunks count"
+    );
 }

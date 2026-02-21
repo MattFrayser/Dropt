@@ -10,110 +10,27 @@
 
 mod common;
 
-use dropt::common::CollisionPolicy;
 use dropt::crypto::types::{EncryptionKey, Nonce};
-use dropt::receive::ReceiveAppState;
-use dropt::server::progress::ProgressTracker;
-use dropt::server::routes;
 use axum::{
     body::Body,
     http::{Method, Request, StatusCode},
-    Router,
 };
-use common::{create_cipher, default_config, setup_temp_dir, CHUNK_SIZE};
-use http_body_util::BodyExt;
-use std::path::PathBuf;
-use std::sync::Arc;
+use common::receive_http::{
+    build_json_request, build_multipart_request, create_receive_test_app, extract_json,
+    with_lock_token,
+};
+use common::{create_cipher, setup_temp_dir, CHUNK_SIZE};
 use tower::ServiceExt;
 
-fn create_test_app(output_dir: PathBuf, key: EncryptionKey) -> (Router, ReceiveAppState) {
-    let progress = Arc::new(ProgressTracker::new());
-    let config = default_config();
-    let state = ReceiveAppState::new(key, output_dir, progress, config, CollisionPolicy::default());
-    let app = routes::create_receive_router(&state);
-    (app, state)
+fn create_test_app(
+    output_dir: std::path::PathBuf,
+    key: EncryptionKey,
+) -> (axum::Router, dropt::receive::ReceiveAppState) {
+    create_receive_test_app(output_dir, key)
 }
 
 fn create_test_data(pattern: u8, size: usize) -> Vec<u8> {
     vec![pattern; size]
-}
-
-fn build_json_request(uri: &str, json: serde_json::Value, token: &str) -> Request<Body> {
-    Request::builder()
-        .method(Method::POST)
-        .uri(uri)
-        .header("content-type", "application/json")
-        .header("Authorization", format!("Bearer {}", token))
-        .body(Body::from(
-            serde_json::to_vec(&json).expect("Failed to serialize JSON"),
-        ))
-        .expect("Failed to build request")
-}
-
-#[allow(clippy::too_many_arguments)]
-fn build_multipart_request(
-    uri: &str,
-    relative_path: &str,
-    chunk_index: usize,
-    total_chunks: usize,
-    file_size: u64,
-    nonce: &str,
-    chunk_data: Vec<u8>,
-    token: &str,
-) -> Request<Body> {
-    let boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW";
-    let mut body = Vec::new();
-
-    let write_field = |body: &mut Vec<u8>, name: &str, value: &str| {
-        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-        body.extend_from_slice(
-            format!("Content-Disposition: form-data; name=\"{}\"\r\n\r\n", name).as_bytes(),
-        );
-        body.extend_from_slice(value.as_bytes());
-        body.extend_from_slice(b"\r\n");
-    };
-
-    write_field(&mut body, "relativePath", relative_path);
-    write_field(&mut body, "chunkIndex", &chunk_index.to_string());
-    write_field(&mut body, "totalChunks", &total_chunks.to_string());
-    write_field(&mut body, "fileSize", &file_size.to_string());
-    write_field(&mut body, "nonce", nonce);
-
-    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-    body.extend_from_slice(b"Content-Disposition: form-data; name=\"chunk\"\r\n");
-    body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
-    body.extend_from_slice(&chunk_data);
-    body.extend_from_slice(b"\r\n");
-    body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
-
-    Request::builder()
-        .method(Method::POST)
-        .uri(uri)
-        .header(
-            "content-type",
-            format!("multipart/form-data; boundary={}", boundary),
-        )
-        .header("Authorization", format!("Bearer {}", token))
-        .body(Body::from(body))
-        .expect("Failed to build multipart request")
-}
-
-async fn extract_json(response: axum::response::Response) -> serde_json::Value {
-    let body_bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("Failed to collect body")
-        .to_bytes();
-    serde_json::from_slice(&body_bytes).expect("Failed to parse JSON")
-}
-
-fn with_lock_token(mut request: Request<Body>, lock_token: &str) -> Request<Body> {
-    request.headers_mut().insert(
-        "X-Transfer-Lock",
-        lock_token.parse().expect("valid lock token header"),
-    );
-    request
 }
 
 async fn assert_error_response(
