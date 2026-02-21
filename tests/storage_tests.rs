@@ -569,7 +569,7 @@ async fn resolve_overwrite_deletes_existing_file() {
     let path = temp_dir.path().join("file.txt");
     tokio::fs::write(&path, b"existing").await.unwrap();
     let result = resolve_collision(CollisionPolicy::Overwrite, path.clone()).await.unwrap();
-    assert!(matches!(result, CollisionResolution::Use(p) if p == path));
+    assert!(matches!(result, CollisionResolution::Overwrote(p) if p == path));
     assert!(!path.exists(), "file should have been deleted before re-creation");
 }
 
@@ -578,7 +578,7 @@ async fn resolve_overwrite_is_noop_when_no_existing_file() {
     let temp_dir = setup_temp_dir();
     let path = temp_dir.path().join("file.txt");
     let result = resolve_collision(CollisionPolicy::Overwrite, path.clone()).await.unwrap();
-    assert!(matches!(result, CollisionResolution::Use(p) if p == path));
+    assert!(matches!(result, CollisionResolution::Overwrote(p) if p == path));
 }
 
 #[tokio::test]

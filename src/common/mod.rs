@@ -11,7 +11,7 @@ pub mod session_core;
 pub use config::{AppConfig, CollisionPolicy, ConfigOverrides, TransferSettings, Transport};
 pub use errors::AppError;
 pub use manifest::{FileEntry, Manifest};
-pub use progress::{FileProgress, FileStatus, TransferProgress};
+pub use progress::{CollisionOutcome, FileProgress, FileStatus, TransferProgress};
 pub use session_core::{ClaimError, Session, SessionState};
 
 /// Runtime contract for send/receive state implementations.

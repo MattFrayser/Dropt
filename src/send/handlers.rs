@@ -12,7 +12,7 @@ use reqwest::header;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use crate::common::AppError;
+use crate::common::{AppError, CollisionOutcome};
 use crate::crypto::{self, Nonce};
 use crate::send::buffer_pool::BufferPool;
 use crate::send::file_handle::SendFileHandle;
@@ -296,7 +296,7 @@ fn apply_skipped_reports(state: &SendAppState, reports: Vec<SkippedFileReport>) 
         let file_chunks = file.size.div_ceil(state.config.chunk_size);
         skipped_chunks = skipped_chunks.saturating_add(file_chunks);
         skipped_files += 1;
-        state.progress.file_skipped(report.file_index, reason.to_string());
+        state.progress.file_collision_outcome(report.file_index, CollisionOutcome::Skipped);
     }
 
     (skipped_files, skipped_chunks)

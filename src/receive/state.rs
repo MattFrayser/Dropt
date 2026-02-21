@@ -2,7 +2,7 @@
 
 use crate::common::config::{CollisionPolicy, TransferSettings};
 use crate::common::{Session, TransferState};
-use crate::crypto::types::EncryptionKey;
+use crate::crypto::types::{EncryptionKey, Nonce};
 use crate::receive::storage::ChunkStorage;
 use crate::server::progress::ProgressTracker;
 use dashmap::DashMap;
@@ -16,7 +16,7 @@ use tokio::sync::Mutex;
 pub struct FileReceiveState {
     pub storage: ChunkStorage,
     pub total_chunks: usize,
-    pub nonce: String,
+    pub nonce: Option<Nonce>,  // stored once, validated on subsequent chunks
     pub relative_path: String,
     pub file_size: u64,
     pub file_index: usize,

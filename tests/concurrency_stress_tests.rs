@@ -762,18 +762,21 @@ async fn test_concurrent_chunks_smoke() {
     let manifest_json = extract_json(manifest_response).await;
     let lock_token = manifest_json["lockToken"].as_str().unwrap().to_string();
 
-    // Upload all chunks concurrently
+    // Upload all chunks concurrently — all chunks share a single nonce (correct protocol)
+    let shared_nonce = Nonce::new();
+    let nonce_b64 = shared_nonce.to_base64();
     let mut tasks = vec![];
     for chunk_idx in 0..num_chunks {
         let app = app.clone();
         let token = token.clone();
         let key = key.clone();
         let lock_token = lock_token.clone();
+        let nonce_b64 = nonce_b64.clone();
+        let nonce = Nonce::from_base64(&nonce_b64).unwrap();
 
         tasks.push(tokio::spawn(async move {
             let pattern = chunk_idx as u8;
             let chunk_data = create_test_data(pattern, SMALL_CHUNK);
-            let nonce = Nonce::new();
 
             let cipher = create_cipher(&key);
             let mut encrypted = chunk_data.clone();
@@ -792,7 +795,7 @@ async fn test_concurrent_chunks_smoke() {
                     chunk_idx,
                     num_chunks,
                     file_size,
-                    &nonce.to_base64(),
+                    &nonce_b64,
                     encrypted,
                     &token,
                 ),

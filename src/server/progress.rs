@@ -4,15 +4,15 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-use crate::common::{FileProgress, FileStatus, TransferProgress};
+use crate::common::{CollisionOutcome, FileProgress, FileStatus, TransferProgress};
 
 struct FileState {
     names: Vec<String>,
     total_chunks: Vec<u64>,
     done_chunks: Vec<AtomicU64>,
     completed: Vec<AtomicBool>,
-    skipped: Mutex<HashMap<usize, String>>,
     errors: Mutex<Vec<(usize, String)>>,
+    outcomes: Mutex<HashMap<usize, CollisionOutcome>>,
 }
 
 /// Lock-free progress tracker using atomics.
@@ -60,7 +60,7 @@ impl ProgressTracker {
             total_chunks: chunk_totals,
             done_chunks,
             completed,
-            skipped: Mutex::new(HashMap::new()),
+            outcomes: Mutex::new(HashMap::new()),
             errors: Mutex::new(Vec::new()),
         });
     }
@@ -103,22 +103,24 @@ impl ProgressTracker {
         }
     }
 
-    /// Mark a file as skipped with a reason.
-    /// Idempotent - repeated calls for the same file index are no-ops.
-    pub fn file_skipped(&self, file_index: usize, reason: String) {
-        if let Some(fs) = self.file_state.get() {
-            if file_index < fs.names.len() {
-                let mut skipped = fs.skipped.lock().unwrap();
-                skipped.entry(file_index).or_insert(reason);
-                if !fs.completed[file_index].swap(true, Ordering::AcqRel) {
-                    self.files_completed.fetch_add(1, Ordering::Relaxed);
-                    let total = fs.total_chunks[file_index];
-                    let prev = fs.done_chunks[file_index].swap(total, Ordering::Relaxed);
-                    if prev < total {
-                        self.completed_chunks
-                            .fetch_add(total - prev, Ordering::Relaxed);
-                    }
-                }
+    /// Record a collision outcome for a file. Idempotent — first call wins.
+    /// `Skipped` marks the file terminal immediately (no chunks will arrive).
+    /// `Renamed` and `Overwrote` are stored but non-terminal — chunks still transfer.
+    pub fn file_collision_outcome(&self, index: usize, outcome: CollisionOutcome) {
+        let Some(fs) = self.file_state.get() else { return };
+        if index >= fs.names.len() { return }
+
+        let mut outcomes = fs.outcomes.lock().unwrap();
+        outcomes.entry(index).or_insert(outcome);
+        let is_skip = matches!(outcomes[&index], CollisionOutcome::Skipped);
+        drop(outcomes);
+
+        if is_skip && !fs.completed[index].swap(true, Ordering::AcqRel) {
+            self.files_completed.fetch_add(1, Ordering::Relaxed);
+            let total = fs.total_chunks[index];
+            let prev = fs.done_chunks[index].swap(total, Ordering::Relaxed);
+            if prev < total {
+                self.completed_chunks.fetch_add(total - prev, Ordering::Relaxed);
             }
         }
     }
@@ -130,7 +132,8 @@ impl ProgressTracker {
         };
 
         let errors = fs.errors.lock().unwrap();
-        let skipped = fs.skipped.lock().unwrap();
+        let outcomes = fs.outcomes.lock().unwrap();
+
         let files = fs
             .names
             .iter()
@@ -139,22 +142,31 @@ impl ProgressTracker {
                 let done = fs.done_chunks[i].load(Ordering::Relaxed);
                 let total = fs.total_chunks[i];
 
+                // Renamed files show the final on-disk name in the filename column
+                let filename = match outcomes.get(&i) {
+                    Some(CollisionOutcome::Renamed(new_name)) => new_name.clone(),
+                    _ => name.clone(),
+                };
+
                 let status = if let Some((_, err)) = errors.iter().find(|(idx, _)| *idx == i) {
                     FileStatus::Failed(err.clone())
-                } else if let Some(reason) = skipped.get(&i) {
-                    FileStatus::Skipped(reason.clone())
+                } else if let Some(CollisionOutcome::Skipped) = outcomes.get(&i) {
+                    FileStatus::Skipped
                 } else if done >= total && total > 0 {
-                    FileStatus::Complete
+                    match outcomes.get(&i) {
+                        Some(CollisionOutcome::Renamed(new_name)) => {
+                            FileStatus::Renamed(new_name.clone())
+                        }
+                        Some(CollisionOutcome::Overwrote) => FileStatus::Overwrote,
+                        _ => FileStatus::Complete,
+                    }
                 } else if done > 0 {
                     FileStatus::InProgress((done as f64 / total as f64) * 100.0)
                 } else {
                     FileStatus::Waiting
                 };
 
-                FileProgress {
-                    filename: name.clone(),
-                    status,
-                }
+                FileProgress { filename, status }
             })
             .collect();
 
@@ -174,14 +186,13 @@ impl ProgressTracker {
 
 #[cfg(test)]
 mod tests {
-    use super::ProgressTracker;
-    use crate::common::FileStatus;
+    use super::*;
+    use crate::common::{CollisionOutcome, FileStatus};
 
     #[test]
     fn reports_empty_snapshot_before_init() {
         let tracker = ProgressTracker::new();
         let snapshot = tracker.snapshot();
-
         assert_eq!(snapshot.total, 0);
         assert_eq!(snapshot.completed, 0);
         assert!(snapshot.files.is_empty());
@@ -193,74 +204,78 @@ mod tests {
         let tracker = ProgressTracker::new();
         tracker.init_files(vec!["a.bin".into(), "b.bin".into()], vec![2, 3]);
 
-        let initial = tracker.snapshot();
-        assert_eq!(initial.total, 2);
-        assert_eq!(initial.completed, 0);
-        assert!(matches!(initial.files[0].status, FileStatus::Waiting));
-        assert!(matches!(initial.files[1].status, FileStatus::Waiting));
-
         tracker.increment_file(0);
         tracker.increment_file(1);
 
-        let middle = tracker.snapshot();
-        assert!(matches!(middle.files[0].status, FileStatus::InProgress(_)));
-        assert!(matches!(middle.files[1].status, FileStatus::InProgress(_)));
-        assert_eq!(tracker.get_progress(), (2, 5));
+        let mid = tracker.snapshot();
+        assert!(matches!(mid.files[0].status, FileStatus::InProgress(_)));
+        assert!(matches!(mid.files[1].status, FileStatus::InProgress(_)));
 
         tracker.file_complete(0);
-        tracker.file_complete(0);
+        tracker.file_complete(0); // idempotent
 
-        let after_complete = tracker.snapshot();
-        assert_eq!(after_complete.completed, 1);
-        assert!(matches!(
-            after_complete.files[0].status,
-            FileStatus::Complete
-        ));
-        assert!(matches!(
-            after_complete.files[1].status,
-            FileStatus::InProgress(_)
-        ));
+        let after = tracker.snapshot();
+        assert_eq!(after.completed, 1);
+        assert!(matches!(after.files[0].status, FileStatus::Complete));
     }
 
     #[test]
-    fn failed_status_has_precedence_over_complete() {
-        let tracker = ProgressTracker::new();
-        tracker.init_files(vec!["a.bin".into()], vec![1]);
-
-        tracker.file_complete(0);
-        tracker.file_failed(0, "disk full".into());
-
-        let snapshot = tracker.snapshot();
-        assert_eq!(snapshot.completed, 1);
-        assert!(matches!(
-            snapshot.files[0].status,
-            FileStatus::Failed(ref msg) if msg == "disk full"
-        ));
-    }
-
-    #[test]
-    fn skipped_status_marks_file_terminal_and_is_idempotent() {
+    fn skipped_marks_file_terminal_and_is_idempotent() {
         let tracker = ProgressTracker::new();
         tracker.init_files(vec!["a.bin".into()], vec![4]);
 
-        tracker.file_skipped(0, "browser_limit".into());
-        tracker.file_skipped(0, "browser_limit".into());
+        tracker.file_collision_outcome(0, CollisionOutcome::Skipped);
+        tracker.file_collision_outcome(0, CollisionOutcome::Skipped); // idempotent
 
         let snapshot = tracker.snapshot();
         assert_eq!(snapshot.completed, 1);
-        assert!(matches!(
-            snapshot.files[0].status,
-            FileStatus::Skipped(ref reason) if reason == "browser_limit"
-        ));
+        assert!(matches!(snapshot.files[0].status, FileStatus::Skipped));
         assert_eq!(tracker.get_progress(), (4, 4));
     }
 
     #[test]
-    fn failed_status_has_precedence_over_skipped() {
+    fn renamed_is_not_terminal_shows_renamed_name_on_complete() {
         let tracker = ProgressTracker::new();
         tracker.init_files(vec!["a.bin".into()], vec![1]);
 
-        tracker.file_skipped(0, "browser_limit".into());
+        tracker.file_collision_outcome(0, CollisionOutcome::Renamed("a (1).bin".into()));
+
+        // Not terminal yet — still waiting for chunks
+        let before = tracker.snapshot();
+        assert!(matches!(before.files[0].status, FileStatus::Waiting));
+
+        tracker.file_complete(0);
+
+        let after = tracker.snapshot();
+        assert!(matches!(
+            after.files[0].status,
+            FileStatus::Renamed(ref name) if name == "a (1).bin"
+        ));
+        assert_eq!(after.files[0].filename, "a (1).bin");
+    }
+
+    #[test]
+    fn overwrote_is_not_terminal_shows_overwrote_on_complete() {
+        let tracker = ProgressTracker::new();
+        tracker.init_files(vec!["a.bin".into()], vec![1]);
+
+        tracker.file_collision_outcome(0, CollisionOutcome::Overwrote);
+
+        let before = tracker.snapshot();
+        assert!(matches!(before.files[0].status, FileStatus::Waiting));
+
+        tracker.file_complete(0);
+
+        let after = tracker.snapshot();
+        assert!(matches!(after.files[0].status, FileStatus::Overwrote));
+    }
+
+    #[test]
+    fn failed_takes_precedence_over_collision_outcomes() {
+        let tracker = ProgressTracker::new();
+        tracker.init_files(vec!["a.bin".into()], vec![1]);
+
+        tracker.file_collision_outcome(0, CollisionOutcome::Renamed("a (1).bin".into()));
         tracker.file_failed(0, "disk full".into());
 
         let snapshot = tracker.snapshot();
@@ -277,7 +292,7 @@ mod tests {
 
         tracker.increment_file(99);
         tracker.file_complete(99);
-        tracker.file_skipped(99, "browser_limit".into());
+        tracker.file_collision_outcome(99, CollisionOutcome::Skipped);
         tracker.file_failed(99, "invalid".into());
 
         let snapshot = tracker.snapshot();

@@ -45,7 +45,7 @@ impl Default for EncryptionKey {
 /// 8-byte base + 4-byte counter (chunk index) for positioned encryption.
 ///
 /// Full nonce = [8-byte random | 4-byte counter]. Enables out-of-order decryption.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Nonce([u8; 8]);
 
 impl Nonce {

@@ -1,14 +1,15 @@
 //! HTTP handlers for manifest intake, chunk upload, and completion.
 
 use std::collections::HashSet;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::common::manifest::validate_nonce_counter_chunks;
-use crate::common::AppError;
+use crate::common::{AppError, CollisionOutcome};
 use crate::crypto::types::Nonce;
 use crate::receive::state::{FileReceiveState, ReceiveAppState};
-use crate::receive::storage::{self, resolve_collision, ChunkStorage, CollisionResolution};
+use crate::receive::storage::{
+    self, find_available_path, resolve_collision, ChunkStorage, CollisionResolution,
+};
 use crate::server::auth::{self, BearerToken, LockToken};
 use crate::utils::security;
 use anyhow::{Context, Result};
@@ -79,16 +80,11 @@ pub async fn receive_manifest(
             .checked_add(file.size)
             .ok_or_else(|| AppError::BadRequest("manifest size overflow".to_string()))?;
     }
-    storage::check_disk_space(destination, total_size)
-        .map_err(|e| AppError::InsufficientStorage(e.to_string()))?;
-
     let mut session_total_chunks = 0u64;
     let mut skipped_files: Vec<String> = Vec::new();
 
-    // Pass 1: resolve collision for every file and collect results.
-    // All files (skipped or not) are registered in the progress tracker so the
-    // TUI can show skipped status and complete correctly even if every file is skipped.
-    let mut resolved: Vec<(ClientManifestEntry, String, Option<PathBuf>)> = Vec::new();
+    // Pass 1: resolve collision for every file
+    let mut resolved: Vec<(ClientManifestEntry, String, CollisionResolution)> = Vec::new();
     for file in manifest.files.into_iter() {
         let filename = std::path::Path::new(&file.relative_path)
             .file_name()
@@ -99,46 +95,51 @@ pub async fn receive_manifest(
         let dest_path = security::confine_receive_path(destination, &file.relative_path)
             .map_err(|e| AppError::BadRequest(format!("bad path: {}", e)))?;
 
-        let resolved_path = match resolve_collision(state.collision_policy, dest_path)
+        let resolution = resolve_collision(state.collision_policy, dest_path)
             .await
-            .context("collision resolution")?
-        {
-            CollisionResolution::Use(path) => Some(path),
-            CollisionResolution::Skip => None,
-        };
+            .context("collision resolution")?;
 
-        resolved.push((file, filename, resolved_path));
+        resolved.push((file, filename, resolution));
     }
+
+    // Disk space: only count files that will actually be written (exclude Skip)
+    let transfer_size: u64 = resolved
+        .iter()
+        .filter(|(_, _, r)| !matches!(r, CollisionResolution::Skip))
+        .map(|(file, _, _)| file.size)
+        .sum();
+    storage::check_disk_space(destination, transfer_size)
+        .map_err(|e| AppError::InsufficientStorage(e.to_string()))?;
 
     // Init progress tracker with ALL files so skipped ones appear in the TUI
     let progress_names: Vec<String> = resolved
         .iter()
-        .map(|(_, name, _): &(ClientManifestEntry, String, Option<PathBuf>)| name.clone())
+        .map(|(_, name, _)| name.clone())
         .collect();
     let progress_totals: Vec<u64> = resolved
         .iter()
-        .map(|(file, _, _): &(ClientManifestEntry, String, Option<PathBuf>)| {
-            file.size.div_ceil(chunk_size)
-        })
+        .map(|(file, _, _)| file.size.div_ceil(chunk_size))
         .collect();
     state.progress.init_files(progress_names, progress_totals);
 
-    // Pass 2: create sessions for kept files, mark skipped ones terminal in tracker
-    for (progress_index, (file, _, resolved_path)) in resolved.into_iter().enumerate() {
+    // Pass 2: create sessions for kept files, record collision outcomes
+    for (progress_index, (file, _, resolution)) in resolved.into_iter().enumerate() {
         let file_chunks = file.size.div_ceil(chunk_size);
         let file_id = security::hash_path(&file.relative_path);
 
-        match resolved_path {
-            None => {
+        match resolution {
+            CollisionResolution::Skip => {
                 skipped_files.push(file.relative_path.clone());
                 state
                     .progress
-                    .file_skipped(progress_index, "already exists".to_string());
+                    .file_collision_outcome(progress_index, CollisionOutcome::Skipped);
             }
-            Some(path) => {
+            CollisionResolution::Overwrote(path) => {
                 session_total_chunks += file_chunks;
+                state
+                    .progress
+                    .file_collision_outcome(progress_index, CollisionOutcome::Overwrote);
 
-                // Initialize storage safely in serial order to prevent upload races
                 let storage = ChunkStorage::new(path, file.size, chunk_size)
                     .await
                     .context("create storage")?;
@@ -146,12 +147,42 @@ pub async fn receive_manifest(
                 let new_state = FileReceiveState {
                     storage,
                     total_chunks: file_chunks as usize,
-                    nonce: String::new(), // populated by first arriving chunk
+                    nonce: None,
                     relative_path: file.relative_path,
                     file_size: file.size,
                     file_index: progress_index,
                 };
+                receive_session.insert(file_id, Arc::new(Mutex::new(new_state)));
+            }
+            CollisionResolution::Use(path) => {
+                session_total_chunks += file_chunks;
 
+                // find_available_path handles Suffix rename if file exists.
+                // For Skip/Overwrite, Use means no collision — returns path unchanged.
+                let final_path = find_available_path(path.clone()).await;
+                if final_path != path {
+                    let new_name = final_path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("")
+                        .to_string();
+                    state
+                        .progress
+                        .file_collision_outcome(progress_index, CollisionOutcome::Renamed(new_name));
+                }
+
+                let storage = ChunkStorage::new(final_path, file.size, chunk_size)
+                    .await
+                    .context("create storage")?;
+
+                let new_state = FileReceiveState {
+                    storage,
+                    total_chunks: file_chunks as usize,
+                    nonce: None,
+                    relative_path: file.relative_path,
+                    file_size: file.size,
+                    file_index: progress_index,
+                };
                 receive_session.insert(file_id, Arc::new(Mutex::new(new_state)));
             }
         }
@@ -208,6 +239,7 @@ pub async fn receive_handler(
         return Err(AppError::BadRequest("nonce empty".to_string()));
     }
     let nonce = Nonce::from_base64(&nonce_string)?;
+    let nonce_for_lock = nonce.clone();
 
     let cipher = state.session.cipher().clone();
     let mut chunk_data = chunk.to_vec();
@@ -243,9 +275,16 @@ pub async fn receive_handler(
         "lock_wait"
     );
 
-    // Update nonce in state if this was first chunk
-    if session.nonce.is_empty() {
-        session.nonce = nonce_string;
+    // Validate nonce consistency — all chunks for a file must share the same base nonce
+    match &session.nonce {
+        None => session.nonce = Some(nonce_for_lock),
+        Some(stored) => {
+            if stored != &nonce_for_lock {
+                return Err(AppError::BadRequest(
+                    "nonce mismatch: chunk from different stream".to_string(),
+                ));
+            }
+        }
     }
 
     // Check duplicates

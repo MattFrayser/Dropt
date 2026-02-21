@@ -10,6 +10,63 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use crate::common::config::CollisionPolicy;
 
+/// Finds an available path by appending ` (N)` suffix if the target already exists.
+/// Returns the original path unchanged if no collision.
+/// Does not create any files — pure path resolution.
+///
+/// Note: Small TOCTOU window exists between this call and file creation.
+/// For a local file transfer tool this risk is acceptable.
+pub async fn find_available_path(mut path: PathBuf) -> PathBuf {
+    if !path.exists() {
+        return path;
+    }
+
+    let filename = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unnamed")
+        .to_string();
+
+    let parent_dir = path
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let (base_name, all_extensions) = if let Some(dot_pos) = filename.find('.') {
+        if dot_pos == 0 {
+            (filename, String::new())
+        } else {
+            (filename[..dot_pos].to_string(), filename[dot_pos..].to_string())
+        }
+    } else {
+        (filename, String::new())
+    };
+
+    let (name_without_number, mut counter) = if let Some(paren_pos) = base_name.rfind(" (") {
+        if base_name.ends_with(')') {
+            let number_str = &base_name[paren_pos + 2..base_name.len() - 1];
+            if let Ok(num) = number_str.parse::<u32>() {
+                (base_name[..paren_pos].to_string(), num + 1)
+            } else {
+                (base_name, 1)
+            }
+        } else {
+            (base_name, 1)
+        }
+    } else {
+        (base_name, 1)
+    };
+
+    loop {
+        let new_name = format!("{} ({}){}", name_without_number, counter, all_extensions);
+        path = parent_dir.join(&new_name);
+        if !path.exists() {
+            return path;
+        }
+        counter += 1;
+    }
+}
+
 /// Manages file assembly from chunks arriving in any order.
 ///
 /// RAII: `disarmed=false` → Drop deletes file. Set `true` after finalization.
@@ -25,97 +82,41 @@ pub struct ChunkStorage {
 
 impl ChunkStorage {
     /// Create storage for one file, resolving name collisions safely.
-    pub async fn new(mut dest_path: PathBuf, file_size: u64, chunk_size: u64) -> Result<Self> {
+    pub async fn new(dest_path: PathBuf, file_size: u64, chunk_size: u64) -> Result<Self> {
         if let Some(parent) = dest_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
 
-        // Break apart file: name, ext, path
-        let filename = dest_path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unnamed")
-            .to_string();
+        let final_path = find_available_path(dest_path).await;
 
-        let parent_dir = dest_path
-            .parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| PathBuf::from("."));
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(&final_path)
+            .await
+            .context(format!(
+                "Failed to create storage file: {}",
+                final_path.display()
+            ))?;
 
-        let (base_name, all_extensions) = if let Some(dot_pos) = filename.find('.') {
-            // hidden files starting with '.' should keep the dot in base_name (ex: .gitignore)
-            if dot_pos == 0 {
-                (filename, String::new())
-            } else {
-                (
-                    filename[..dot_pos].to_string(),
-                    filename[dot_pos..].to_string(),
-                )
-            }
+        file.set_len(file_size).await?;
+
+        let expected_chunks = if file_size == 0 {
+            0
         } else {
-            (filename, String::new())
+            file_size.div_ceil(chunk_size) as usize
         };
 
-        // Check if base_name ends with " (N)" pattern and extract N
-        // Updating text (1).txt -> text (2).txt
-        let (name_without_number, mut counter) = if let Some(paren_pos) = base_name.rfind(" (") {
-            if base_name.ends_with(')') {
-                let number_str = &base_name[paren_pos + 2..base_name.len() - 1];
-                if let Ok(num) = number_str.parse::<u32>() {
-                    (base_name[..paren_pos].to_string(), num + 1)
-                } else {
-                    (base_name, 1)
-                }
-            } else {
-                (base_name, 1)
-            }
-        } else {
-            // No existing number
-            (base_name, 1)
-        };
-
-        loop {
-            let result = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create_new(true)
-                .open(&dest_path)
-                .await;
-
-            match result {
-                Ok(file) => {
-                    file.set_len(file_size).await?;
-
-                    let expected_chunks = if file_size == 0 {
-                        0
-                    } else {
-                        file_size.div_ceil(chunk_size) as usize
-                    };
-
-                    return Ok(Self {
-                        file,
-                        path: dest_path,
-                        chunks_received: HashSet::new(),
-                        expected_chunks,
-                        expected_size: file_size,
-                        disarmed: false,
-                        chunk_size,
-                    });
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                    let new_name =
-                        format!("{} ({}){}", name_without_number, counter, all_extensions);
-                    dest_path = parent_dir.join(new_name);
-                    counter += 1;
-                }
-                Err(e) => {
-                    return Err(anyhow::Error::new(e).context(format!(
-                        "Failed to create storage file: {}",
-                        dest_path.display()
-                    )));
-                }
-            };
-        }
+        Ok(Self {
+            file,
+            path: final_path,
+            chunks_received: HashSet::new(),
+            expected_chunks,
+            expected_size: file_size,
+            disarmed: false,
+            chunk_size,
+        })
     }
 
     /// Return whether this chunk index is already stored.
@@ -317,14 +318,11 @@ pub fn check_disk_space(destination: &std::path::Path, bytes: u64) -> Result<()>
 
 pub enum CollisionResolution {
     Use(PathBuf),
+    Overwrote(PathBuf),
     Skip,
 }
 
 /// Resolves a file path against an existing file according to the collision policy.
-///
-/// - `Suffix`: passes the path through unchanged; [`ChunkStorage`] handles suffix numbering on create.
-/// - `Overwrite`: deletes the existing file if present, returns the original path for fresh creation.
-/// - `Skip`: returns [`CollisionResolution::Skip`] if the file already exists, otherwise passes through.
 ///
 /// # Errors
 ///
@@ -339,8 +337,7 @@ pub async fn resolve_collision(
             if path.exists() {
                 tokio::fs::remove_file(&path).await?;
             }
-
-            Ok(CollisionResolution::Use(path))
+            Ok(CollisionResolution::Overwrote(path))
         }
         CollisionPolicy::Skip => {
             if path.exists() {
@@ -349,5 +346,72 @@ pub async fn resolve_collision(
                 Ok(CollisionResolution::Use(path))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use crate::common::config::CollisionPolicy;
+
+    #[tokio::test]
+    async fn find_available_path_returns_original_when_no_collision() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("file.txt");
+        let result = find_available_path(path.clone()).await;
+        assert_eq!(result, path);
+    }
+
+    #[tokio::test]
+    async fn find_available_path_appends_suffix_on_collision() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("file.txt");
+        tokio::fs::write(&path, b"existing").await.unwrap();
+        let result = find_available_path(path.clone()).await;
+        assert_eq!(result, dir.path().join("file (1).txt"));
+    }
+
+    #[tokio::test]
+    async fn find_available_path_increments_existing_counter() {
+        let dir = TempDir::new().unwrap();
+        let path_1 = dir.path().join("file (1).txt");
+        tokio::fs::write(&path_1, b"existing").await.unwrap();
+        let result = find_available_path(path_1).await;
+        assert_eq!(result, dir.path().join("file (2).txt"));
+    }
+
+    #[tokio::test]
+    async fn find_available_path_handles_hidden_files() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join(".gitignore");
+        tokio::fs::write(&path, b"existing").await.unwrap();
+        let result = find_available_path(path.clone()).await;
+        assert_eq!(result, dir.path().join(".gitignore (1)"));
+    }
+
+    #[tokio::test]
+    async fn suffix_policy_returns_use_regardless_of_existence() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("file.txt");
+        let result = resolve_collision(CollisionPolicy::Suffix, path).await.unwrap();
+        assert!(matches!(result, CollisionResolution::Use(_)));
+    }
+
+    #[tokio::test]
+    async fn skip_policy_returns_skip_when_file_exists() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("file.txt");
+        tokio::fs::write(&path, b"existing").await.unwrap();
+        let result = resolve_collision(CollisionPolicy::Skip, path).await.unwrap();
+        assert!(matches!(result, CollisionResolution::Skip));
+    }
+
+    #[tokio::test]
+    async fn skip_policy_returns_use_when_no_file() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("file.txt");
+        let result = resolve_collision(CollisionPolicy::Skip, path).await.unwrap();
+        assert!(matches!(result, CollisionResolution::Use(_)));
     }
 }

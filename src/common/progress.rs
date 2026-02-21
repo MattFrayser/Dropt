@@ -4,8 +4,21 @@ pub enum FileStatus {
     Waiting,
     InProgress(f64),
     Complete,
-    Skipped(String),
+    Renamed(String),  // final filename on disk
+    Overwrote,
+    Skipped,          // was Skipped(String) — reason dropped, always "already exists"
     Failed(String),
+}
+
+/// Collision outcome recorded at manifest time. Stored in ProgressTracker,
+/// surfaced as FileStatus in TUI snapshots.
+/// Skipped is terminal (no chunks will arrive).
+/// Renamed and Overwrote are non-terminal — chunks still transfer.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CollisionOutcome {
+    Skipped,
+    Renamed(String),  // final filename on disk
+    Overwrote,
 }
 
 /// Progress information for a single file.
@@ -26,5 +39,16 @@ pub struct TransferProgress {
 impl TransferProgress {
     pub fn is_complete(&self) -> bool {
         self.total > 0 && self.completed >= self.total
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn skipped_is_unit_variant() {
+        let status = FileStatus::Skipped;
+        assert!(matches!(status, FileStatus::Skipped));
     }
 }

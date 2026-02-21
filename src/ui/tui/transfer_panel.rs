@@ -94,7 +94,9 @@ fn build_visible_file_rows(files: &[FileProgress], limit: usize) -> (Vec<FileLis
                     (format!("{:.0}%", percent), Color::Green, false)
                 }
                 FileStatus::Complete => ("complete".to_string(), Color::Green, false),
-                FileStatus::Skipped(_) => ("skipped".to_string(), Color::Yellow, false),
+                FileStatus::Skipped => ("already exists".to_string(), Color::Yellow, false),
+                FileStatus::Renamed(_) => ("complete".to_string(), Color::Green, false),
+                FileStatus::Overwrote => ("overwrote".to_string(), Color::Yellow, false),
                 FileStatus::Failed(_) => ("failed".to_string(), Color::Red, false),
             };
 
@@ -219,6 +221,8 @@ fn muted_style() -> Style {
 #[cfg(test)]
 mod tests {
     use super::build_visible_file_rows;
+    use ratatui::style::Color;
+
     use crate::ui::tui::types::{FileProgress, FileStatus};
 
     fn waiting_file(name: &str) -> FileProgress {
@@ -231,7 +235,7 @@ mod tests {
     fn skipped_file(name: &str) -> FileProgress {
         FileProgress {
             filename: name.to_string(),
-            status: FileStatus::Skipped("browser_limit".to_string()),
+            status: FileStatus::Skipped,
         }
     }
 
@@ -272,7 +276,33 @@ mod tests {
         let (rows, overflow) = build_visible_file_rows(&files, 5);
 
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].status_text, "skipped");
+        assert_eq!(rows[0].status_text, "already exists");
+        assert_eq!(rows[0].status_color, Color::Yellow);
         assert_eq!(overflow, 0);
+    }
+
+    #[test]
+    fn renamed_row_shows_complete_status_and_green() {
+        let files = vec![FileProgress {
+            filename: "report (1).pdf".to_string(),
+            status: FileStatus::Renamed("report (1).pdf".to_string()),
+        }];
+        let (rows, _) = build_visible_file_rows(&files, 5);
+
+        assert_eq!(rows[0].filename, "report (1).pdf");
+        assert_eq!(rows[0].status_text, "complete");
+        assert_eq!(rows[0].status_color, Color::Green);
+    }
+
+    #[test]
+    fn overwrote_row_shows_yellow_overwrote_status() {
+        let files = vec![FileProgress {
+            filename: "report.pdf".to_string(),
+            status: FileStatus::Overwrote,
+        }];
+        let (rows, _) = build_visible_file_rows(&files, 5);
+
+        assert_eq!(rows[0].status_text, "overwrote");
+        assert_eq!(rows[0].status_color, Color::Yellow);
     }
 }
