@@ -88,12 +88,6 @@ pub async fn send_handler(
         .ok_or_else(|| AppError::BadRequest(format!("file_index out of bounds: {}", file_index)))?;
     let chunk_size = state.config.chunk_size;
 
-    // Some browser send multiple retries (safari)
-    // Be noted to not count towards total
-    if state.mark_chunk_sent(file_index, chunk_index) {
-        state.progress.increment_file(file_index);
-    }
-
     // Get or create file handle (lazy initialization)
     let file_handle = state
         .file_handles
@@ -117,6 +111,12 @@ pub async fn send_handler(
         &state.buffer_pool,
     )
     .await?;
+
+    // Mark chunk sent only after successful processing.
+    // Some browsers send multiple retries (safari); don't count duplicates.
+    if state.mark_chunk_sent(file_index, chunk_index) {
+        state.progress.increment_file(file_index);
+    }
 
     Ok(Response::builder()
         .header(header::CONTENT_TYPE, "application/octet-stream")
@@ -220,15 +220,19 @@ pub async fn complete_download(
             accounting.accounted_chunks,
             total_chunks,
         );
-    } else {
-        tracing::info!(
-            "Send complete: served={} skipped_files={} skipped_chunks={} total={}",
-            chunks_sent,
-            skipped_files,
-            skipped_chunks,
-            total_chunks
-        );
+        return Err(AppError::BadRequest(format!(
+            "Transfer incomplete: {}/{} chunks accounted for",
+            accounting.accounted_chunks, total_chunks
+        )));
     }
+
+    tracing::info!(
+        "Send complete: served={} skipped_files={} skipped_chunks={} total={}",
+        chunks_sent,
+        skipped_files,
+        skipped_chunks,
+        total_chunks
+    );
 
     state.session.complete(&token, &lock_token);
     mark_all_files_complete(&state);
