@@ -175,3 +175,15 @@ fn handlers_are_sync_into_response_values() {
     assert_into_response(web::serve_shared_js());
     assert_into_response(web::serve_shared_css());
 }
+
+#[test]
+fn download_js_uses_request_variable_consistently_for_indexeddb_errors() {
+    assert!(
+        DOWNLOAD_JS.contains("req.onerror = () => reject(req.error)"),
+        "download.js should reject IndexedDB open errors via req.error"
+    );
+    assert!(
+        !DOWNLOAD_JS.contains("reject(request.error)"),
+        "download.js should not reference undefined request variable"
+    );
+}

@@ -1,8 +1,3 @@
-//==============
-// Constants
-//==============
-const DEFAULT_CONCURRENT = 4
-
 //============
 // URL Helpers
 //============
@@ -113,7 +108,7 @@ function generateNonce(nonceBase64, counter) {
     nonce.set(nonceBase64,  0) // first 8 bytes
 
 
-    // last 5 bytes (4 + last flag)
+    // last 4 bytes: big-endian counter
     const view = new DataView(nonce.buffer)
     view.setUint32(8, counter, false) // false = BE32
 
@@ -273,8 +268,27 @@ async function retryWithExponentialBackoff(asyncFn, maxRetries = 3, context = ''
             // Exponential backoff: 1s, 2s, 4s
             const delay = 1000 * Math.pow(2, attempt)
             await new Promise(r => setTimeout(r, delay))
-            console.log(`Retrying ${context} (attempt ${attempt + 2}/${maxRetries})...`)
         }
+    }
+}
+
+// Fetch with an AbortController-based timeout. Throws on timeout or HTTP error.
+async function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+        const response = await fetch(url, { ...options, signal: controller.signal })
+        clearTimeout(timeout)
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`)
+        }
+        return response
+    } catch (error) {
+        clearTimeout(timeout)
+        if (error.name === 'AbortError') {
+            throw new Error(`Request timeout after ${timeoutMs / 1000}s`)
+        }
+        throw error
     }
 }
 

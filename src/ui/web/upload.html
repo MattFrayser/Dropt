@@ -8,14 +8,10 @@
         <link href="https://fonts.googleapis.com/css2?family=Orbit&display=swap" rel="stylesheet">
         <link rel="stylesheet" href="/styles.css">
     </head>
-    <style>
-
-
-    </style>
 <body>
 
         <div class="container">
-            <h1>ArchDrop</h1>
+            <h1>Dropt</h1>
             <div class="subtitle">Drag and drop your file or click to browse</div>
             <div class="upload-area" id="uploadArea">
                 <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -24,13 +20,14 @@
                     <line x1="12" y1="3" x2="12" y2="15"></line>
                 </svg>
                 <div class="upload-text">Choose a file or drag it here</div>
-                <div class="upload-hint">Maximum file size: 50MB</div>
+                <div class="upload-hint">Drag and drop multiple files or folders</div>
                 <input type="file" id="fileInput" accept="*/*" multiple>
             </div>
 
             <div class="file-list" id="fileList"></div>
 
             <button class="upload-btn" id="uploadBtn" onclick="uploadFiles(selectedFiles)">Upload File</button>
+            <p id="errorMsg" class="error-msg"></p>
 
             <div class="info">
                 <div class="info-item">
@@ -47,6 +44,3 @@
 
 </body>
 </html>
-
-
-

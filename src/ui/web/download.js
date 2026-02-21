@@ -84,7 +84,7 @@ class KeyStore {
         return new Promise((resolve, reject) => {
             const req = indexedDB.open(this.name, 1)
 
-            req.onerror = () => reject(request.error)
+            req.onerror = () => reject(req.error)
 
             req.onsuccess = () => {
                 this.db = req.result
@@ -137,7 +137,7 @@ class KeyStore {
     async get(token, fileIndex) {
         const db = await this.open()
         return new Promise((resolve, reject) => {
-            const tx = db.transaction([this.storeName], 'readwrite')
+            const tx = db.transaction([this.storeName], 'readonly')
             const store = tx.objectStore(this.storeName)
             const req = store.get(`${token}_${fileIndex}`) 
             req.onsuccess = () => resolve(req.result || null)
@@ -166,7 +166,7 @@ class KeyStore {
         })
     }
 
-    async cleanup(maxAge) {
+    async cleanup(maxAge = 25 * 60 * 1000) {
         const db = await this.open()
         const cutoff = Date.now() - maxAge
         return new Promise((resolve, reject) => {
@@ -197,6 +197,20 @@ const keyStore = new KeyStore();
 let cachedManifest = null
 let cachedToken = null
 
+let transferInProgress = false
+
+function showError(msg) {
+    const el = document.getElementById('errorMsg')
+    if (el) el.textContent = msg
+}
+
+window.addEventListener('beforeunload', (event) => {
+    if (transferInProgress) {
+        event.preventDefault()
+        event.returnValue = ''
+    }
+})
+
 // Download button
 document.addEventListener('DOMContentLoaded', async () => {
     const downloadBtn = document.getElementById('downloadBtn');
@@ -208,12 +222,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         cachedToken = getTokenFromUrl()
 
-        const manifestResponse = await fetch('/send/manifest', {
-            headers: authHeaders()
-        })
-        if (!manifestResponse.ok) {
-            throw new Error(`Failed to fetch manifest: HTTP ${manifestResponse.status}`);
+        let manifestResponse
+        try {
+            manifestResponse = await fetch('/send/manifest', {
+                headers: authHeaders()
+            })
+        } catch (networkError) {
+            throw new Error('Network error: could not reach the server. Is the sender still running?')
+        }
 
+        if (!manifestResponse.ok) {
+            const status = manifestResponse.status
+            if (status === 401) {
+                throw new Error('Invalid or missing token. The link may be malformed.')
+            } else if (status === 409) {
+                throw new Error('This transfer has already been claimed by another browser.')
+            } else if (status >= 500) {
+                throw new Error('Server error. The sender may have encountered a problem.')
+            } else {
+                throw new Error(`Failed to load files (HTTP ${status}).`)
+            }
         }
 
         cachedManifest = await manifestResponse.json()
@@ -235,7 +263,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         displayFileList(cachedManifest.files)
 
     } catch (error) {
-        console.error('Failed to load file list:', error)
+        if (downloadBtn) downloadBtn.disabled = true
+        showError(error.message)
     }
 })
 
@@ -252,7 +281,7 @@ function displayFileList(files) {
 
         const item = createFileItem(file, index, {
             initialProgressText: !validation.isValid
-                ? `Exceeds Browsers limit - will be skipped`
+                ? `Too large for this browser - will be skipped`
                 : 'Ready to download',
             useSummaryWrapper: true
         })
@@ -271,23 +300,7 @@ function displayFileList(files) {
 //===========
 // Download
 //===========
-let isTransferComplete = false;
-
 async function handleDownloadAction() {
-    const downloadBtn = document.getElementById('downloadBtn');
-    
-    if (isTransferComplete) {
-        // ACTION: Finish and Close
-        try {
-            await fetch('/send/complete', { method: 'POST', headers: transferHeaders() });
-            downloadBtn.textContent = 'Connection Closed';
-            window.close(); // Try to close tab
-        } catch (e) {
-            console.error("Error closing session:", e);
-        }
-        return;
-    }
-
     await startDownload();
 }
 
@@ -297,10 +310,7 @@ async function downloadFile(token, fileEntry, fileItem, transferConfig) {
 }
 
 async function startDownload() {
-    if (!cachedManifest || !cachedToken) {
-        alert('File list not loaded. Please refresh the page.');
-        return;
-    }
+    if (!cachedManifest || !cachedToken) return;
 
     const downloadBtn = document.getElementById('downloadBtn')
     const browserConfig = getBrowserConfig()
@@ -329,12 +339,13 @@ async function startDownload() {
             fileItem.classList.add('skipped')
             const progressText = fileItem.querySelector('.progress-text')
             if (progressText) {
-                progressText.textContent = `Skipped - exceeds browsers limit`
+                progressText.textContent = `Skipped - too large for this browser`
             }
         }
     })
 
     downloadBtn.disabled = true
+    transferInProgress = true
     let downloadedCount = 0
     let errorCount = 0
 
@@ -383,17 +394,16 @@ async function startDownload() {
             }
         }, 5, 'Finalizing Transfer');
 
-        isTransferComplete = true;
-
         downloadBtn.textContent = 'Download Complete'
 
         await keyStore.clear(cachedToken);
 
     } catch(error) {
-        console.error(error)
-        alert(`Download failed: ${error.message}`)
+        showError(error.message)
         downloadBtn.textContent = 'Download Files'
         downloadBtn.disabled = false
+    } finally {
+        transferInProgress = false
     }
 }
 class DownloadManager {
@@ -487,50 +497,26 @@ class DownloadManager {
                 activeFetches.set(chunkIndex, fetchPromise)
             }
 
-            // wait for inorder to arrive
-            try {
-                // wait for needed chunk to arrive in map
-                const chunkData = await activeFetches.get(nextChunkNeeded)
+            // wait for needed chunk to arrive in map
+            const chunkData = await activeFetches.get(nextChunkNeeded)
 
-                await writeCallback(chunkData, nextChunkNeeded);
+            await writeCallback(chunkData, nextChunkNeeded);
 
-                activeFetches.delete(nextChunkNeeded)
-                nextChunkNeeded++
+            activeFetches.delete(nextChunkNeeded)
+            nextChunkNeeded++
 
-                this.updateProgress(fileItem, nextChunkNeeded, totalChunks);
-
-            } catch (err) {
-                throw err
-            }
+            this.updateProgress(fileItem, nextChunkNeeded, totalChunks);
         }
     }
 
     async fetchAndDecrypt(fileEntry, chunkIndex, keyData) {
-        const response = await retryWithExponentialBackoff(async () => {
-            const controller = new AbortController()
-            const timeout = setTimeout(() => controller.abort(), 30000)
-
-            try {
-                const res = await fetch(
-                    `/send/${fileEntry.index}/chunk/${chunkIndex}`,
-                    { signal: controller.signal, headers: transferHeaders() }
-                )
-
-                clearTimeout(timeout)
-
-                if (!res.ok) {
-                    throw new Error(`HTTP ${res.status}`)
-                }
-
-                return res
-            } catch (error) {
-                clearTimeout(timeout)
-                if (error.name === 'AbortError') {
-                    throw new Error(`Request timeout after 30s`)
-                }
-                throw error
-            }
-        }, 3, `download chunk ${chunkIndex}`)
+        const response = await retryWithExponentialBackoff(
+            () => fetchWithTimeout(
+                `/send/${fileEntry.index}/chunk/${chunkIndex}`,
+                { headers: transferHeaders() }
+            ),
+            3, `download chunk ${chunkIndex}`
+        )
 
         const encrypted = await response.arrayBuffer()
         const nonceBase = urlSafeBase64ToUint8Array(keyData.nonceBase64)

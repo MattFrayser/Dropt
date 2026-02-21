@@ -6,6 +6,14 @@ const fileInput = document.getElementById('fileInput');
 const fileList = document.getElementById('fileList');
 const uploadBtn = document.getElementById('uploadBtn');
 let selectedFiles = [];
+let transferInProgress = false;
+
+window.addEventListener('beforeunload', (event) => {
+    if (transferInProgress) {
+        event.preventDefault()
+        event.returnValue = ''
+    }
+})
 
 // Click upload
 uploadArea.addEventListener('click', () => fileInput.click())
@@ -131,14 +139,18 @@ async function sendManifest(files) {
     return await response.json();
 }
 
+function showError(msg) {
+    const el = document.getElementById('errorMsg')
+    if (el) el.textContent = msg
+}
+
 async function uploadFiles(selectedFiles) {
-    if (selectedFiles.length === 0) {
-        alert('Please select files')
-        return
-    }
+    if (selectedFiles.length === 0) return
 
     const uploadBtn = document.getElementById('uploadBtn')
+    showError('')
     uploadBtn.disabled = true
+    transferInProgress = true
 
     // Show progress bars for all files
     const fileItems = fileList.querySelectorAll('.file-item')
@@ -151,11 +163,9 @@ async function uploadFiles(selectedFiles) {
         const { key } = await getEncryptionKeyFromUrl(['encrypt'])
 
         // Send manifest first so server knows total chunks
-        console.time('Manifest upload');
         const manifestResponse = await sendManifest(selectedFiles);
         setLockToken(manifestResponse.lockToken)
         const transferConfig = manifestResponse.config
-        console.timeEnd('Manifest upload');
 
         const skippedFiles = new Set(manifestResponse.skipped_files ?? []);
 
@@ -170,10 +180,6 @@ async function uploadFiles(selectedFiles) {
                 if (progress) progress.classList.remove('show');
             }
         });
-
-        if (skippedFiles.size > 0) {
-            console.log(`Skipping ${skippedFiles.size} file(s) already at destination:`, [...skippedFiles]);
-        }
 
         // Build upload tasks preserving original selectedFiles indices so fileItem mapping stays correct
         const uploadTasks = selectedFiles
@@ -196,7 +202,7 @@ async function uploadFiles(selectedFiles) {
                     throw error
                 }
             },
-            DEFAULT_CONCURRENT
+            transferConfig.concurrency
         )
 
         await fetch('/receive/complete', { method: 'POST', headers: transferHeaders() })
@@ -204,10 +210,11 @@ async function uploadFiles(selectedFiles) {
         uploadBtn.textContent = 'Upload Complete!'
 
     } catch(error) {
-        console.error(error)
-        alert(`Upload failed: ${error.message}`)
+        showError(error.message)
         uploadBtn.disabled = false
         uploadBtn.textContent = selectedFiles.length === 1 ? 'Retry Upload' : 'Retry Uploads'
+    } finally {
+        transferInProgress = false
     }
 }
 
@@ -215,10 +222,6 @@ async function uploadFile(file, relativePath, key, fileItem, config) {
     // each file gets its own nonce
     const chunkSize = config.chunk_size
     const totalChunks = Math.ceil(file.size / chunkSize)
-
-    console.log(`Uploading: ${relativePath} (${totalChunks} chunks)`);
-    console.time(`${relativePath} - chunk 0`);
-    console.time(`${relativePath} - total`);
 
     const fileNonce = crypto.getRandomValues(new Uint8Array(8));
 
@@ -264,7 +267,6 @@ async function uploadFile(file, relativePath, key, fileItem, config) {
         )
     }
 
-    console.timeEnd(`${relativePath} - total`);
     await finalizeFile(relativePath);
 
     const progressText = fileItem.querySelector('.progress-text')
@@ -272,36 +274,12 @@ async function uploadFile(file, relativePath, key, fileItem, config) {
 }
 
 async function uploadChunk(formData, chunkIndex, relativePath) {
-    const url = '/receive/chunk'
-    return await retryWithExponentialBackoff(async () => {
-        const controller = new AbortController()
-        const timeoutDuration = 30000
-        const startTime = performance.now()
-        const timeout = setTimeout(() => controller.abort(), timeoutDuration)
-
-        try {
-            const response = await fetch(url, {
-                method: 'POST',
-                body: formData,
-                signal: controller.signal,
-                headers: transferHeaders()
-            })
-
-            clearTimeout(timeout)
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`)
-            }
-
-            console.log(`✓ Chunk ${chunkIndex} of ${relativePath}`)
-        } catch (error) {
-            clearTimeout(timeout)
-            if (error.name === 'AbortError') {
-                const elapsed = ((performance.now() - startTime) / 1000).toFixed(1)
-                throw new Error(`Upload aborted after ${elapsed}s (timeout: ${timeoutDuration/1000}s)`)
-            }
-            throw error
-        }
+    await retryWithExponentialBackoff(async () => {
+        await fetchWithTimeout('/receive/chunk', {
+            method: 'POST',
+            body: formData,
+            headers: transferHeaders()
+        })
     }, 3, `chunk ${chunkIndex}`)
 }
 
