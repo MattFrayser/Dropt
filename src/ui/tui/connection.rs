@@ -31,7 +31,7 @@ pub(crate) fn render_connection_panel(
         "Send"
     };
     let transport = format!("{:?}", config.transport);
-    let title = format!(" {} • {} ", mode, transport);
+    let title = format!(" {mode} • {transport} ");
 
     let block = Block::default()
         .title(Span::styled(title, Style::default().fg(ACCENT)))
@@ -267,5 +267,5 @@ fn middle_ellipsis(text: &str, max_width: usize) -> String {
 
     let start: String = chars.iter().take(left).collect();
     let end: String = chars.iter().skip(len - right).collect();
-    format!("{}...{}", start, end)
+    format!("{start}...{end}")
 }

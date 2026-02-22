@@ -19,7 +19,7 @@ pub fn encrypt_chunk_in_place(
     let nonce = AeadNonce::assume_unique_for_key(full_nonce);
 
     key.seal_in_place_append_tag(nonce, Aad::empty(), buffer)
-        .map_err(|e| anyhow::anyhow!("Encryption failed: {:?}", e))
+        .map_err(|e| anyhow::anyhow!("Encryption failed: {e:?}"))
 }
 
 pub fn decrypt_chunk_in_place(
@@ -33,7 +33,7 @@ pub fn decrypt_chunk_in_place(
 
     let plaintext_len = key
         .open_in_place(nonce, Aad::empty(), buffer)
-        .map_err(|e| anyhow::anyhow!("Decryption failed: {:?}", e))?
+        .map_err(|e| anyhow::anyhow!("Decryption failed: {e:?}"))?
         .len();
     buffer.truncate(plaintext_len);
     Ok(())

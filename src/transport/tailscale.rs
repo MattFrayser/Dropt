@@ -135,9 +135,8 @@ fn map_start_error(err: TailscaleError) -> anyhow::Error {
              Or use a different tunnel provider."
         ),
         TailscaleError::Unknown(msg) => anyhow!(
-            "Failed to start Tailscale funnel: {}\n\n\
-             Or use a different tunnel provider.",
-            msg
+            "Failed to start Tailscale funnel: {msg}\n\n\
+             Or use a different tunnel provider."
         ),
     }
 }
@@ -179,7 +178,7 @@ impl TailscaleTunnel {
         };
 
         Ok(Self {
-            url: format!("https://{}", hostname),
+            url: format!("https://{hostname}"),
             port,
             owns_funnel,
         })
@@ -215,7 +214,7 @@ impl TailscaleTunnel {
     async fn off_funnel<B: TailscaleBackend + Sync>(&self, backend: &B) -> Result<()> {
         let port_arg = self.port.to_string();
         let output = backend
-            .run(&["funnel", &format!("--https={}", port_arg), "off"])
+            .run(&["funnel", &format!("--https={port_arg}"), "off"])
             .await
             .context("Failed to disable Tailscale funnel")?;
 

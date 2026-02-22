@@ -61,14 +61,12 @@ fn map_start_error(err: CloudflareError) -> anyhow::Error {
              Or use a different tunnel provider."
         ),
         CloudflareError::ProcessExited(status) => anyhow::anyhow!(
-            "cloudflared exited before tunnel URL became available (status: {}).\n\n\
-             Try again, or use a different tunnel provider.",
-            status
+            "cloudflared exited before tunnel URL became available (status: {status}).\n\n\
+             Try again, or use a different tunnel provider."
         ),
         CloudflareError::StartupFailed(msg) => anyhow::anyhow!(
-            "Failed to start Cloudflare tunnel: {}\n\n\
-             Or use a different tunnel provider.",
-            msg
+            "Failed to start Cloudflare tunnel: {msg}\n\n\
+             Or use a different tunnel provider."
         ),
     }
 }
@@ -119,9 +117,9 @@ impl CloudflareTunnel {
             .args([
                 "tunnel",
                 "--url",
-                &format!("http://localhost:{}", local_port),
+                &format!("http://localhost:{local_port}"),
                 "--metrics",
-                &format!("localhost:{}", metrics_port),
+                &format!("localhost:{metrics_port}"),
                 "--no-autoupdate",
                 "--protocol",
                 "http2",
@@ -205,7 +203,7 @@ async fn wait_for_url(
     child: &mut Child,
 ) -> std::result::Result<String, CloudflareError> {
     let client = reqwest::Client::new();
-    let api_url = format!("http://localhost:{}/quicktunnel", metrics_port);
+    let api_url = format!("http://localhost:{metrics_port}/quicktunnel");
 
     loop {
         if let Some(status) = child

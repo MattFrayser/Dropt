@@ -52,7 +52,7 @@ impl SendFileHandle {
 
         self.file
             .read_exact_at(offset, &mut buffer[..])
-            .context(format!("Failed to read chunk at offset {}", offset))?;
+            .context(format!("Failed to read chunk at offset {offset}"))?;
 
         Ok(())
     }

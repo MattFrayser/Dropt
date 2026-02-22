@@ -58,8 +58,7 @@ fn rejects_chunk_size_above_conservative_runtime_limit() {
 #[test]
 fn allows_chunk_size_at_conservative_runtime_limit() {
     let config = format!(
-        "\n        [local]\n        chunk_size = {}\n        ",
-        MAX_TRANSFER_CHUNK_SIZE_BYTES
+        "\n        [local]\n        chunk_size = {MAX_TRANSFER_CHUNK_SIZE_BYTES}\n        "
     );
     load_test_config(&config, &[]).expect("expected config to be valid");
 }

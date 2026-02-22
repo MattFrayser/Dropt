@@ -358,8 +358,7 @@ async fn test_concurrent_chunks_same_file() {
             assert_eq!(
                 contents[offset + i],
                 pattern,
-                "Chunk {} corrupted by concurrent writes",
-                chunk_idx
+                "Chunk {chunk_idx} corrupted by concurrent writes"
             );
         }
     }
@@ -755,8 +754,7 @@ async fn test_manifest_rejects_nonce_counter_overflow() {
     let message = json["error"]["message"].as_str().unwrap_or("");
     assert!(
         message.contains("too large for secure chunk encryption"),
-        "Expected clean UX error message, got: {}",
-        message
+        "Expected clean UX error message, got: {message}"
     );
 }
 
@@ -836,8 +834,7 @@ async fn test_manifest_rejects_duplicate_relative_paths() {
     let message = json["error"]["message"].as_str().unwrap_or("");
     assert!(
         message.contains("duplicate relative_path"),
-        "Expected duplicate path error message, got: {}",
-        message
+        "Expected duplicate path error message, got: {message}"
     );
 }
 

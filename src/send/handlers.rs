@@ -85,7 +85,7 @@ pub async fn send_handler(
 
     let file_entry = state
         .get_file(file_index)
-        .ok_or_else(|| AppError::BadRequest(format!("file_index out of bounds: {}", file_index)))?;
+        .ok_or_else(|| AppError::BadRequest(format!("file_index out of bounds: {file_index}")))?;
     let chunk_size = state.config.chunk_size;
 
     // Get or create file handle (lazy initialization)
@@ -139,9 +139,7 @@ async fn process_chunk(
     // Validate bounds
     if start >= file_size {
         return Err(anyhow::anyhow!(
-            "Chunk start {} exceeds file size {}",
-            start,
-            file_size
+            "Chunk start {start} exceeds file size {file_size}"
         ));
     }
 

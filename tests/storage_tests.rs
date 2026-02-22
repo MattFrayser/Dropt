@@ -358,9 +358,7 @@ async fn test_concurrent_chunk_writes() {
             assert_eq!(
                 contents[offset + i],
                 pattern,
-                "Chunk {} corrupted at offset {}",
-                chunk_idx,
-                i
+                "Chunk {chunk_idx} corrupted at offset {i}"
             );
         }
     }
@@ -403,8 +401,7 @@ async fn test_finalize_incomplete_transfer_fails() {
     let error_msg = error.to_string().to_lowercase();
     assert!(
         error_msg.contains("incomplete") || error_msg.contains("missing"),
-        "Error should mention incomplete transfer, got: {}",
-        error_msg
+        "Error should mention incomplete transfer, got: {error_msg}"
     );
 }
 

@@ -110,7 +110,7 @@ mod tests {
         let token = session.token();
         let lock = claim_session(&session, token).expect("claim should succeed");
 
-        let result = require_active_session(&session, token, &format!("{}-bad", lock));
+        let result = require_active_session(&session, token, &format!("{lock}-bad"));
         assert!(result.is_err());
     }
 

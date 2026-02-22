@@ -107,8 +107,7 @@ async fn await_server_startup_probe(
         Ok(Ok(())) => Ok(()),
         Ok(Err(err)) => Err(err.context("local server task failed during startup")),
         Err(join_err) => Err(anyhow!(
-            "local server task panicked during startup: {}",
-            join_err
+            "local server task panicked during startup: {join_err}"
         )),
     }
 }

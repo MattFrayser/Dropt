@@ -68,7 +68,7 @@ pub fn build_bearer_request(
     token: &str,
     lock_token: Option<&str>,
 ) -> Request<Body> {
-    let auth = format!("Bearer {}", token);
+    let auth = format!("Bearer {token}");
     build_request(method, uri, Some(&auth), lock_token)
 }
 

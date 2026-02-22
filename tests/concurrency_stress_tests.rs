@@ -106,7 +106,7 @@ async fn test_concurrent_different_files_same_directory() {
         let lock_token = lock_token.clone();
 
         tasks.push(tokio::spawn(async move {
-            let filename = format!("file{}.bin", file_idx);
+            let filename = format!("file{file_idx}.bin");
             let pattern = file_idx as u8;
             let chunk_data = create_test_data(pattern, CHUNK_SIZE);
             let nonce = Nonce::new();
@@ -142,9 +142,9 @@ async fn test_concurrent_different_files_same_directory() {
 
     // Verify all files exist with correct content
     for file_idx in 0..num_files {
-        let filename = format!("file{}.bin", file_idx);
+        let filename = format!("file{file_idx}.bin");
         let path = temp_dir.path().join(&filename);
-        assert!(path.exists(), "File {} should exist", filename);
+        assert!(path.exists(), "File {filename} should exist");
 
         // Finalize each file
         let finalize_uri = "/receive/finalize";
@@ -164,9 +164,7 @@ async fn test_concurrent_different_files_same_directory() {
         let pattern = file_idx as u8;
         assert!(
             contents.iter().all(|&b| b == pattern),
-            "File {} should contain pattern {:02x}",
-            filename,
-            pattern
+            "File {filename} should contain pattern {pattern:02x}"
         );
     }
 
@@ -185,7 +183,7 @@ async fn test_concurrent_different_files_same_directory() {
             count += 1;
         }
     }
-    assert_eq!(count, num_files, "Should have exactly {} files", num_files);
+    assert_eq!(count, num_files, "Should have exactly {num_files} files");
 }
 
 #[tokio::test]
@@ -224,14 +222,14 @@ async fn test_concurrent_chunks_different_files() {
     // Each file stream must keep a stable base nonce across all chunks.
     let file_nonce_b64: Vec<String> = (0..num_files).map(|_| Nonce::new().to_base64()).collect();
     let mut tasks = vec![];
-    for file_idx in 0..num_files {
+    for (file_idx, nonce_b64_for_file) in file_nonce_b64.iter().enumerate().take(num_files) {
         for chunk_idx in 0..chunks_per_file {
             let app = app.clone();
             let token = token.clone();
             let key = key.clone();
             let lock_token = lock_token.clone();
-            let filename = format!("file{}.bin", file_idx);
-            let nonce_b64 = file_nonce_b64[file_idx].clone();
+            let filename = format!("file{file_idx}.bin");
+            let nonce_b64 = nonce_b64_for_file.clone();
             let nonce = Nonce::from_base64(&nonce_b64).unwrap();
 
             tasks.push(tokio::spawn(async move {
@@ -276,7 +274,7 @@ async fn test_concurrent_chunks_different_files() {
 
     // Finalize all files and verify
     for file_idx in 0..num_files {
-        let filename = format!("file{}.bin", file_idx);
+        let filename = format!("file{file_idx}.bin");
         let finalize_uri = "/receive/finalize";
         let request = with_lock_token(
             build_finalize_request(finalize_uri, &filename, &token),
@@ -302,10 +300,7 @@ async fn test_concurrent_chunks_different_files() {
                 assert_eq!(
                     contents[offset + i],
                     expected_pattern,
-                    "File {} chunk {} corrupted at offset {}",
-                    file_idx,
-                    chunk_idx,
-                    i
+                    "File {file_idx} chunk {chunk_idx} corrupted at offset {i}"
                 );
             }
         }
@@ -359,8 +354,7 @@ async fn test_race_finalize_vs_drop() {
     // Finalize should succeed - file should exist
     assert!(
         finalize_result.is_ok(),
-        "Finalize should succeed: {:?}",
-        finalize_result
+        "Finalize should succeed: {finalize_result:?}"
     );
     assert!(
         file_path.exists(),
@@ -383,7 +377,7 @@ async fn test_dashmap_concurrent_session_access() {
     let sessions = Arc::new(DashMap::new());
 
     for i in 0..10 {
-        let filename = format!("file{}.bin", i);
+        let filename = format!("file{i}.bin");
         let file_path = temp_dir.path().join(&filename);
         let storage = ChunkStorage::new(file_path, CHUNK_1MB as u64, CHUNK_1MB as u64)
             .await
@@ -396,7 +390,7 @@ async fn test_dashmap_concurrent_session_access() {
     let mut tasks = vec![];
     for i in 0..10 {
         let sessions = sessions.clone();
-        let filename = format!("file{}.bin", i);
+        let filename = format!("file{i}.bin");
 
         tasks.push(tokio::spawn(async move {
             let pattern = (i * 10) as u8;
@@ -422,8 +416,7 @@ async fn test_dashmap_concurrent_session_access() {
         let result = task.await.expect("Task panicked");
         assert!(
             result.is_ok(),
-            "Each session should finalize successfully: {:?}",
-            result
+            "Each session should finalize successfully: {result:?}"
         );
     }
 
@@ -540,9 +533,7 @@ async fn test_concurrent_chunk_uploads_mutex_contention() {
             assert_eq!(
                 contents[offset + i],
                 pattern,
-                "Chunk {} corrupted at offset {}",
-                chunk_idx,
-                i
+                "Chunk {chunk_idx} corrupted at offset {i}"
             );
         }
     }
@@ -596,7 +587,7 @@ async fn test_concurrent_upload_smoke() {
         let lock_token = lock_token.clone();
 
         tasks.push(tokio::spawn(async move {
-            let filename = format!("file{}.bin", file_idx);
+            let filename = format!("file{file_idx}.bin");
             let pattern = file_idx as u8;
             let chunk_data = create_test_data(pattern, SMALL_CHUNK);
             let nonce = Nonce::new();
@@ -632,9 +623,9 @@ async fn test_concurrent_upload_smoke() {
 
     // Verify all files exist
     for file_idx in 0..3 {
-        let filename = format!("file{}.bin", file_idx);
+        let filename = format!("file{file_idx}.bin");
         let path = temp_dir.path().join(&filename);
-        assert!(path.exists(), "File {} should exist", filename);
+        assert!(path.exists(), "File {filename} should exist");
     }
 }
 
@@ -765,7 +756,6 @@ async fn test_concurrent_session_claim_attempts() {
     let success_count = results.iter().filter(|&&r| r).count();
     assert_eq!(
         success_count, 1,
-        "Exactly one client should claim session, got {}",
-        success_count
+        "Exactly one client should claim session, got {success_count}"
     );
 }

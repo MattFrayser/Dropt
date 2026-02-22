@@ -30,9 +30,9 @@ fn emit_no_tui_output(
     stderr: &mut dyn Write,
 ) -> io::Result<()> {
     if let Some(message) = warning {
-        writeln!(stderr, "\n{}\n", message)?;
+        writeln!(stderr, "\n{message}\n")?;
     }
-    writeln!(stdout, "{}", url)?;
+    writeln!(stdout, "{url}")?;
     Ok(())
 }
 
@@ -67,7 +67,7 @@ pub async fn start_https<S: TransferState>(
 
     // Use local IP instead of localhost for network access
     let local_ip = get_local_ip().unwrap_or_else(|_| "127.0.0.1".to_string());
-    let base_url = format!("https://{}:{}", local_ip, port);
+    let base_url = format!("https://{local_ip}:{port}");
     let url = format!(
         "{}/{}#token={}&key={}&nonce={}",
         base_url,
@@ -298,10 +298,10 @@ async fn run_session<S: TransferState>(
             total
         )];
         if skipped > 0 {
-            parts.push(format!("{} skipped", skipped));
+            parts.push(format!("{skipped} skipped"));
         }
         if failed > 0 {
-            parts.push(format!("{} failed", failed));
+            parts.push(format!("{failed} failed"));
         }
         eprintln!("\n{}", parts.join(", "));
     }
@@ -403,8 +403,7 @@ async fn wait_for_transfers<S: TransferState>(
                 if current_count != last_count {
                     tracing::info!("{} transfer(s) remaining...", current_count);
                     let _ = status_sender.send(Some(format!(
-                        "Completing {} transfer(s)... Press Ctrl+C again to force quit (may lose data)",
-                        current_count
+                        "Completing {current_count} transfer(s)... Press Ctrl+C again to force quit (may lose data)"
                     )));
                     last_count = current_count;
                 }
@@ -536,7 +535,7 @@ mod tests {
         let stdout_text = String::from_utf8(stdout).expect("stdout should be utf8");
         let stderr_text = String::from_utf8(stderr).expect("stderr should be utf8");
 
-        assert_eq!(stdout_text, format!("{}\n", url));
+        assert_eq!(stdout_text, format!("{url}\n"));
         assert!(stderr_text.contains("shared/untrusted"));
         assert!(stderr_text.contains("certificate warnings"));
     }
@@ -553,7 +552,7 @@ mod tests {
         let stdout_text = String::from_utf8(stdout).expect("stdout should be utf8");
         let stderr_text = String::from_utf8(stderr).expect("stderr should be utf8");
 
-        assert_eq!(stdout_text, format!("{}\n", url));
+        assert_eq!(stdout_text, format!("{url}\n"));
         assert!(stderr_text.is_empty());
     }
 }

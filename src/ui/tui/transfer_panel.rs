@@ -68,7 +68,7 @@ fn transfer_title(
 
     if !display_files.is_empty() {
         let queued = display_files.len() + display_overflow_count.unwrap_or(0);
-        return format!(" Transfer • {} queued ", queued);
+        return format!(" Transfer • {queued} queued ");
     }
 
     " Transfer ".to_string()
@@ -91,9 +91,7 @@ fn build_visible_file_rows(files: &[FileProgress], limit: usize) -> (Vec<FileLis
         .map(|file| {
             let (status_text, status_color, dim_status) = match &file.status {
                 FileStatus::Waiting => ("waiting...".to_string(), Color::DarkGray, true),
-                FileStatus::InProgress(percent) => {
-                    (format!("{:.0}%", percent), Color::Green, false)
-                }
+                FileStatus::InProgress(percent) => (format!("{percent:.0}%"), Color::Green, false),
                 FileStatus::Complete => ("complete".to_string(), Color::Green, false),
                 FileStatus::Skipped => ("already exists".to_string(), Color::Yellow, false),
                 FileStatus::Renamed(_) => ("complete".to_string(), Color::Green, false),
@@ -179,7 +177,7 @@ fn render_rows_with_overflow(
     }
 
     if overflow > 0 {
-        let text = format!("+{} more", overflow);
+        let text = format!("+{overflow} more");
         let widget = Paragraph::new(text).style(muted_style());
         frame.render_widget(widget, rows[row_idx]);
     }
@@ -198,7 +196,7 @@ fn render_file_status_row(frame: &mut Frame, area: Rect, row: &FileListRow) {
         let gauge = Gauge::default()
             .gauge_style(Style::default().fg(Color::Green))
             .percent(percent)
-            .label(format!("{}%", percent));
+            .label(format!("{percent}%"));
         frame.render_widget(gauge, chunks[1]);
         return;
     }

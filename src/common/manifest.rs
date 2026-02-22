@@ -18,9 +18,7 @@ pub fn validate_nonce_counter_chunks(
     let total_chunks = file_size.div_ceil(chunk_size);
     if total_chunks > MAX_CHUNKS_PER_FILE {
         anyhow::bail!(
-            "File '{}' is too large for secure chunk encryption with current settings. Max supported chunks per file is {}. Increase chunk size or split the file.",
-            file_label,
-            MAX_CHUNKS_PER_FILE
+            "File '{file_label}' is too large for secure chunk encryption with current settings. Max supported chunks per file is {MAX_CHUNKS_PER_FILE}. Increase chunk size or split the file."
         );
     }
     Ok(())

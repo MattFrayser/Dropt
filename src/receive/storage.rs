@@ -61,7 +61,7 @@ pub async fn find_available_path(mut path: PathBuf) -> PathBuf {
     };
 
     loop {
-        let new_name = format!("{} ({}){}", name_without_number, counter, all_extensions);
+        let new_name = format!("{name_without_number} ({counter}){all_extensions}");
         path = parent_dir.join(&new_name);
         if !path.exists() {
             return path;
@@ -182,8 +182,7 @@ impl ChunkStorage {
         self.file.seek(SeekFrom::Start(offset)).await?;
 
         self.file.write_all(decrypted_data).await.context(format!(
-            "Failed to write chunk {} at offset {}",
-            chunk_index, offset
+            "Failed to write chunk {chunk_index} at offset {offset}"
         ))?;
 
         self.chunks_received.insert(chunk_index);
@@ -313,8 +312,7 @@ pub fn check_disk_space(destination: &std::path::Path, bytes: u64) -> Result<()>
             required_bytes / (1024 * 1024 * 1024)
         )),
         None => Err(anyhow::anyhow!(
-            "Cannot determine available disk space for {:?}.",
-            destination
+            "Cannot determine available disk space for {destination:?}."
         )),
     }
 }

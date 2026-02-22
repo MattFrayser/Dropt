@@ -93,7 +93,7 @@ pub async fn receive_manifest(
             .to_string();
 
         let dest_path = security::confine_receive_path(destination, &file.relative_path)
-            .map_err(|e| AppError::BadRequest(format!("bad path: {}", e)))?;
+            .map_err(|e| AppError::BadRequest(format!("bad path: {e}")))?;
 
         let resolution = resolve_collision(state.collision_policy, dest_path)
             .await
@@ -333,7 +333,7 @@ pub async fn finalize_upload(
     let session_mutex = receive_sessions
         .get(&file_id)
         .map(|entry| entry.value().clone())
-        .ok_or_else(|| AppError::NotFound(format!("session not found: {}", relative_path)))?;
+        .ok_or_else(|| AppError::NotFound(format!("session not found: {relative_path}")))?;
 
     // Lock to finalize
     let mut session = session_mutex.lock().await;
@@ -372,8 +372,7 @@ pub async fn complete_transfer(
     let pending_files = state.receive_sessions.len();
     if pending_files > 0 {
         return Err(AppError::BadRequest(format!(
-            "transfer incomplete: {} file(s) not finalized",
-            pending_files
+            "transfer incomplete: {pending_files} file(s) not finalized"
         )));
     }
 

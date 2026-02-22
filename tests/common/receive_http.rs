@@ -45,7 +45,7 @@ pub fn build_json_request(uri: &str, json: serde_json::Value, token: &str) -> Re
         .method(Method::POST)
         .uri(uri)
         .header("content-type", "application/json")
-        .header("Authorization", format!("Bearer {}", token))
+        .header("Authorization", format!("Bearer {token}"))
         .body(Body::from(
             serde_json::to_vec(&json).expect("Failed to serialize JSON"),
         ))
@@ -67,9 +67,9 @@ pub fn build_multipart_request(
     let mut body = Vec::new();
 
     let write_field = |body: &mut Vec<u8>, name: &str, value: &str| {
-        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
         body.extend_from_slice(
-            format!("Content-Disposition: form-data; name=\"{}\"\r\n\r\n", name).as_bytes(),
+            format!("Content-Disposition: form-data; name=\"{name}\"\r\n\r\n").as_bytes(),
         );
         body.extend_from_slice(value.as_bytes());
         body.extend_from_slice(b"\r\n");
@@ -81,21 +81,21 @@ pub fn build_multipart_request(
     write_field(&mut body, "fileSize", &file_size.to_string());
     write_field(&mut body, "nonce", nonce);
 
-    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
     body.extend_from_slice(b"Content-Disposition: form-data; name=\"chunk\"\r\n");
     body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
     body.extend_from_slice(&chunk_data);
     body.extend_from_slice(b"\r\n");
-    body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
 
     Request::builder()
         .method(Method::POST)
         .uri(uri)
         .header(
             "content-type",
-            format!("multipart/form-data; boundary={}", boundary),
+            format!("multipart/form-data; boundary={boundary}"),
         )
-        .header("Authorization", format!("Bearer {}", token))
+        .header("Authorization", format!("Bearer {token}"))
         .body(Body::from(body))
         .expect("Failed to build multipart request")
 }
@@ -104,20 +104,20 @@ pub fn build_finalize_request(uri: &str, relative_path: &str, token: &str) -> Re
     let boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW";
     let mut body = Vec::new();
 
-    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
     body.extend_from_slice(b"Content-Disposition: form-data; name=\"relativePath\"\r\n\r\n");
     body.extend_from_slice(relative_path.as_bytes());
     body.extend_from_slice(b"\r\n");
-    body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
 
     Request::builder()
         .method(Method::POST)
         .uri(uri)
         .header(
             "content-type",
-            format!("multipart/form-data; boundary={}", boundary),
+            format!("multipart/form-data; boundary={boundary}"),
         )
-        .header("Authorization", format!("Bearer {}", token))
+        .header("Authorization", format!("Bearer {token}"))
         .body(Body::from(body))
         .expect("Failed to build finalize request")
 }
@@ -126,7 +126,7 @@ pub fn build_complete_request(uri: &str, token: &str) -> Request<Body> {
     Request::builder()
         .method(Method::POST)
         .uri(uri)
-        .header("Authorization", format!("Bearer {}", token))
+        .header("Authorization", format!("Bearer {token}"))
         .body(Body::empty())
         .expect("Failed to build complete request")
 }

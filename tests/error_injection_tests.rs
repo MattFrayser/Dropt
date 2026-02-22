@@ -204,47 +204,47 @@ async fn test_negative_chunk_index() {
     let mut body = Vec::new();
 
     // Add relativePath field
-    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
     body.extend_from_slice(b"Content-Disposition: form-data; name=\"relativePath\"\r\n\r\n");
     body.extend_from_slice(b"test.txt\r\n");
 
     // Add chunkIndex with negative value
-    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
     body.extend_from_slice(b"Content-Disposition: form-data; name=\"chunkIndex\"\r\n\r\n");
     body.extend_from_slice(b"-1\r\n");
 
     // Add other required fields
-    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
     body.extend_from_slice(b"Content-Disposition: form-data; name=\"totalChunks\"\r\n\r\n");
     body.extend_from_slice(b"3\r\n");
 
-    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
     body.extend_from_slice(b"Content-Disposition: form-data; name=\"fileSize\"\r\n\r\n");
     body.extend_from_slice(format!("{}\r\n", CHUNK_SIZE * 3).as_bytes());
 
     let nonce = Nonce::new();
-    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
     body.extend_from_slice(b"Content-Disposition: form-data; name=\"nonce\"\r\n\r\n");
     body.extend_from_slice(nonce.to_base64().as_bytes());
     body.extend_from_slice(b"\r\n");
 
     // Add chunk data
-    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
     body.extend_from_slice(b"Content-Disposition: form-data; name=\"chunk\"\r\n");
     body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
     body.extend_from_slice(&create_test_data(0xAA, 100));
     body.extend_from_slice(b"\r\n");
 
-    body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
 
     let request = Request::builder()
         .method(Method::POST)
         .uri("/receive/chunk")
         .header(
             "content-type",
-            format!("multipart/form-data; boundary={}", boundary),
+            format!("multipart/form-data; boundary={boundary}"),
         )
-        .header("Authorization", format!("Bearer {}", token))
+        .header("Authorization", format!("Bearer {token}"))
         .header("X-Transfer-Lock", &lock_token)
         .body(Body::from(body))
         .expect("Failed to build request");
@@ -286,10 +286,10 @@ async fn test_partial_multipart_upload() {
     let mut body = Vec::new();
 
     // Start multipart but don't finish it
-    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
     body.extend_from_slice(b"Content-Disposition: form-data; name=\"relativePath\"\r\n\r\n");
     body.extend_from_slice(b"test.txt\r\n");
-    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
     body.extend_from_slice(b"Content-Disposition: form-data; name=\"chunk\"\r\n");
     body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
     body.extend_from_slice(&create_test_data(0xAA, 100));
@@ -300,9 +300,9 @@ async fn test_partial_multipart_upload() {
         .uri("/receive/chunk")
         .header(
             "content-type",
-            format!("multipart/form-data; boundary={}", boundary),
+            format!("multipart/form-data; boundary={boundary}"),
         )
-        .header("Authorization", format!("Bearer {}", token))
+        .header("Authorization", format!("Bearer {token}"))
         .body(Body::from(body))
         .expect("Failed to build request");
 

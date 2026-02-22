@@ -3,7 +3,7 @@
 
 <p align="center">
   <a href="https://www.rust-lang.org/">
-    <img src="https://img.shields.io/badge/rust-1.85%2B-orange.svg" alt="Rust 1.85+" />
+    <img src="https://img.shields.io/badge/rust-1.88%2B-orange.svg" alt="Rust 1.88+" />
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" />
@@ -59,7 +59,7 @@ sudo install -m 0755 target/release/dropt /usr/local/bin/dropt
 
 **Linux host:**
 - Linux kernel 2.6+
-- Rust 1.85+ (source builds only)
+- Rust 1.88+ (source builds only)
 - Optional: `cloudflared` for Cloudflare tunnels
 - Optional: `tailscale` and running `tailscaled` for Tailscale funnels
 

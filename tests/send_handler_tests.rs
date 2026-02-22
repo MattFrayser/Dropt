@@ -182,7 +182,7 @@ async fn test_chunk_decryption_correctness() {
 
     // Download and decrypt each chunk
     for chunk_idx in 0..3 {
-        let chunk_uri = format!("/send/0/chunk/{}", chunk_idx);
+        let chunk_uri = format!("/send/0/chunk/{chunk_idx}");
         let request = build_bearer_request(Method::GET, &chunk_uri, &token, Some(&lock_token));
         let response = app
             .clone()
@@ -328,7 +328,7 @@ async fn test_invalid_lock_token_rejected() {
     let lock_token = claim_lock_token(&app, &token).await;
 
     // Try to request chunk with wrong lock token
-    let bad_lock = format!("{}-bad", lock_token);
+    let bad_lock = format!("{lock_token}-bad");
     let request = build_bearer_request(Method::GET, "/send/0/chunk/0", &token, Some(&bad_lock));
     let response = app.oneshot(request).await.expect("Failed to send request");
 

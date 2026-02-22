@@ -82,8 +82,8 @@ fn unique_archive_path(wanted: &Path, names: &mut HashSet<PathBuf>) -> PathBuf {
     let mut idx = 2usize;
     loop {
         let candidate_name = match ext {
-            Some(ext) if !ext.is_empty() => format!("{}-{}.{}", stem, idx, ext),
-            _ => format!("{}-{}", stem, idx),
+            Some(ext) if !ext.is_empty() => format!("{stem}-{idx}.{ext}"),
+            _ => format!("{stem}-{idx}"),
         };
         let candidate = parent.join(candidate_name);
         if names.insert(candidate.clone()) {
