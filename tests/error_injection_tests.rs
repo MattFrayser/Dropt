@@ -10,7 +10,6 @@
 
 mod common;
 
-use dropt::crypto::types::{EncryptionKey, Nonce};
 use axum::{
     body::Body,
     http::{Method, Request, StatusCode},
@@ -20,6 +19,7 @@ use common::receive_http::{
     with_lock_token,
 };
 use common::{create_cipher, setup_temp_dir, CHUNK_SIZE};
+use dropt::crypto::types::{EncryptionKey, Nonce};
 use tower::ServiceExt;
 
 fn create_test_app(

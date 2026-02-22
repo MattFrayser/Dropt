@@ -1,8 +1,8 @@
 mod common;
 
-use dropt::common::config::CollisionPolicy;
-use dropt::receive::{ChunkStorage, CollisionResolution, resolve_collision};
 use common::setup_temp_dir;
+use dropt::common::config::CollisionPolicy;
+use dropt::receive::{resolve_collision, ChunkStorage, CollisionResolution};
 
 //===============
 // Test Helpers
@@ -549,7 +549,9 @@ async fn test_chunk_boundary_multiple_of_1mb() {
 async fn resolve_suffix_passes_through_when_no_collision() {
     let temp_dir = setup_temp_dir();
     let path = temp_dir.path().join("file.txt");
-    let result = resolve_collision(CollisionPolicy::Suffix, path.clone()).await.unwrap();
+    let result = resolve_collision(CollisionPolicy::Suffix, path.clone())
+        .await
+        .unwrap();
     assert!(matches!(result, CollisionResolution::Use(p) if p == path));
 }
 
@@ -559,7 +561,9 @@ async fn resolve_suffix_passes_through_when_file_exists() {
     let path = temp_dir.path().join("file.txt");
     tokio::fs::write(&path, b"existing").await.unwrap();
     // Suffix passes through unchanged — ChunkStorage handles the rename loop
-    let result = resolve_collision(CollisionPolicy::Suffix, path.clone()).await.unwrap();
+    let result = resolve_collision(CollisionPolicy::Suffix, path.clone())
+        .await
+        .unwrap();
     assert!(matches!(result, CollisionResolution::Use(p) if p == path));
 }
 
@@ -568,16 +572,23 @@ async fn resolve_overwrite_deletes_existing_file() {
     let temp_dir = setup_temp_dir();
     let path = temp_dir.path().join("file.txt");
     tokio::fs::write(&path, b"existing").await.unwrap();
-    let result = resolve_collision(CollisionPolicy::Overwrite, path.clone()).await.unwrap();
+    let result = resolve_collision(CollisionPolicy::Overwrite, path.clone())
+        .await
+        .unwrap();
     assert!(matches!(result, CollisionResolution::Overwrote(p) if p == path));
-    assert!(!path.exists(), "file should have been deleted before re-creation");
+    assert!(
+        !path.exists(),
+        "file should have been deleted before re-creation"
+    );
 }
 
 #[tokio::test]
 async fn resolve_overwrite_is_noop_when_no_existing_file() {
     let temp_dir = setup_temp_dir();
     let path = temp_dir.path().join("file.txt");
-    let result = resolve_collision(CollisionPolicy::Overwrite, path.clone()).await.unwrap();
+    let result = resolve_collision(CollisionPolicy::Overwrite, path.clone())
+        .await
+        .unwrap();
     assert!(matches!(result, CollisionResolution::Overwrote(p) if p == path));
 }
 
@@ -586,7 +597,9 @@ async fn resolve_skip_returns_skip_when_file_exists() {
     let temp_dir = setup_temp_dir();
     let path = temp_dir.path().join("file.txt");
     tokio::fs::write(&path, b"existing").await.unwrap();
-    let result = resolve_collision(CollisionPolicy::Skip, path).await.unwrap();
+    let result = resolve_collision(CollisionPolicy::Skip, path)
+        .await
+        .unwrap();
     assert!(matches!(result, CollisionResolution::Skip));
 }
 
@@ -594,6 +607,8 @@ async fn resolve_skip_returns_skip_when_file_exists() {
 async fn resolve_skip_passes_through_when_no_existing_file() {
     let temp_dir = setup_temp_dir();
     let path = temp_dir.path().join("file.txt");
-    let result = resolve_collision(CollisionPolicy::Skip, path.clone()).await.unwrap();
+    let result = resolve_collision(CollisionPolicy::Skip, path.clone())
+        .await
+        .unwrap();
     assert!(matches!(result, CollisionResolution::Use(p) if p == path));
 }

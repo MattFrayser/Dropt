@@ -112,10 +112,7 @@ pub async fn receive_manifest(
         .map_err(|e| AppError::InsufficientStorage(e.to_string()))?;
 
     // Init progress tracker with ALL files so skipped ones appear in the TUI
-    let progress_names: Vec<String> = resolved
-        .iter()
-        .map(|(_, name, _)| name.clone())
-        .collect();
+    let progress_names: Vec<String> = resolved.iter().map(|(_, name, _)| name.clone()).collect();
     let progress_totals: Vec<u64> = resolved
         .iter()
         .map(|(file, _, _)| file.size.div_ceil(chunk_size))
@@ -151,9 +148,10 @@ pub async fn receive_manifest(
                         .and_then(|n| n.to_str())
                         .unwrap_or("")
                         .to_string();
-                    state
-                        .progress
-                        .file_collision_outcome(progress_index, CollisionOutcome::Renamed(new_name));
+                    state.progress.file_collision_outcome(
+                        progress_index,
+                        CollisionOutcome::Renamed(new_name),
+                    );
                 }
                 Some(final_path)
             }

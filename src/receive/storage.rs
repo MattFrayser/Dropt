@@ -36,7 +36,10 @@ pub async fn find_available_path(mut path: PathBuf) -> PathBuf {
         if dot_pos == 0 {
             (filename, String::new())
         } else {
-            (filename[..dot_pos].to_string(), filename[dot_pos..].to_string())
+            (
+                filename[..dot_pos].to_string(),
+                filename[dot_pos..].to_string(),
+            )
         }
     } else {
         (filename, String::new())
@@ -352,8 +355,8 @@ pub async fn resolve_collision(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use crate::common::config::CollisionPolicy;
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn find_available_path_returns_original_when_no_collision() {
@@ -394,7 +397,9 @@ mod tests {
     async fn suffix_policy_returns_use_regardless_of_existence() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("file.txt");
-        let result = resolve_collision(CollisionPolicy::Suffix, path).await.unwrap();
+        let result = resolve_collision(CollisionPolicy::Suffix, path)
+            .await
+            .unwrap();
         assert!(matches!(result, CollisionResolution::Use(_)));
     }
 
@@ -403,7 +408,9 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("file.txt");
         tokio::fs::write(&path, b"existing").await.unwrap();
-        let result = resolve_collision(CollisionPolicy::Skip, path).await.unwrap();
+        let result = resolve_collision(CollisionPolicy::Skip, path)
+            .await
+            .unwrap();
         assert!(matches!(result, CollisionResolution::Skip));
     }
 
@@ -411,7 +418,9 @@ mod tests {
     async fn skip_policy_returns_use_when_no_file() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("file.txt");
-        let result = resolve_collision(CollisionPolicy::Skip, path).await.unwrap();
+        let result = resolve_collision(CollisionPolicy::Skip, path)
+            .await
+            .unwrap();
         assert!(matches!(result, CollisionResolution::Use(_)));
     }
 }

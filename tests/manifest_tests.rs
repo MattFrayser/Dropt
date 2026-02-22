@@ -1,8 +1,8 @@
 mod common;
 
-use dropt::common::Manifest;
 use base64::Engine;
 use common::default_config;
+use dropt::common::Manifest;
 use tempfile::TempDir;
 
 #[tokio::test]

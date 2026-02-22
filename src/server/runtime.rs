@@ -292,7 +292,11 @@ async fn run_session<S: TransferState>(
         .count();
 
     if total > 0 {
-        let mut parts = vec![format!("{}/{} file(s) transferred", completed - skipped - failed, total)];
+        let mut parts = vec![format!(
+            "{}/{} file(s) transferred",
+            completed - skipped - failed,
+            total
+        )];
         if skipped > 0 {
             parts.push(format!("{} skipped", skipped));
         }

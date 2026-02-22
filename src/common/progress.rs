@@ -4,9 +4,9 @@ pub enum FileStatus {
     Waiting,
     InProgress(f64),
     Complete,
-    Renamed(String),  // final filename on disk
+    Renamed(String), // final filename on disk
     Overwrote,
-    Skipped,          // was Skipped(String) — reason dropped, always "already exists"
+    Skipped, // was Skipped(String) — reason dropped, always "already exists"
     Failed(String),
 }
 
@@ -17,7 +17,7 @@ pub enum FileStatus {
 #[derive(Debug, Clone, PartialEq)]
 pub enum CollisionOutcome {
     Skipped,
-    Renamed(String),  // final filename on disk
+    Renamed(String), // final filename on disk
     Overwrote,
 }
 

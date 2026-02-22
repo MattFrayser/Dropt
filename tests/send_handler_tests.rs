@@ -1,15 +1,14 @@
 mod common;
 
-use dropt::crypto::types::{EncryptionKey, Nonce};
 use axum::{
     http::{Method, StatusCode},
     Router,
 };
 use common::send_http::{
-    assert_error_response, build_bearer_request, create_send_test_app, extract_bytes,
-    extract_json,
+    assert_error_response, build_bearer_request, create_send_test_app, extract_bytes, extract_json,
 };
 use common::{create_cipher, setup_temp_dir, CHUNK_SIZE};
+use dropt::crypto::types::{EncryptionKey, Nonce};
 use std::path::PathBuf;
 use tempfile::TempDir;
 use tower::ServiceExt;
@@ -494,7 +493,13 @@ async fn test_complete_rejected_when_chunks_not_all_served() {
     let request = build_bearer_request(Method::POST, "/send/complete", &token, Some(&lock_token));
     let response = app.oneshot(request).await.expect("Failed to send request");
 
-    assert_error_response(response, StatusCode::BAD_REQUEST, "bad_request", "incomplete").await;
+    assert_error_response(
+        response,
+        StatusCode::BAD_REQUEST,
+        "bad_request",
+        "incomplete",
+    )
+    .await;
 }
 
 // Issue 2: out-of-bounds chunk_index must not inflate the sent chunk count

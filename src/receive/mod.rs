@@ -5,4 +5,4 @@ mod state;
 mod storage;
 
 pub use state::ReceiveAppState;
-pub use storage::{ChunkStorage, CollisionResolution, resolve_collision};
+pub use storage::{resolve_collision, ChunkStorage, CollisionResolution};

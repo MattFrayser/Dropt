@@ -1,15 +1,13 @@
 mod common;
 
-use dropt::crypto::types::{EncryptionKey, Nonce};
-use axum::{
-    http::StatusCode,
-};
+use axum::http::StatusCode;
 use common::receive_http::{
     build_complete_request, build_finalize_request, build_json_request, build_multipart_request,
     create_receive_test_app, create_receive_test_app_with_policy, extract_json, with_lock_token,
 };
-use dropt::common::CollisionPolicy;
 use common::{create_cipher, setup_temp_dir, CHUNK_SIZE};
+use dropt::common::CollisionPolicy;
+use dropt::crypto::types::{EncryptionKey, Nonce};
 use tower::ServiceExt;
 
 fn create_test_app(
@@ -22,7 +20,6 @@ fn create_test_app(
 fn create_test_data(pattern: u8, size: usize) -> Vec<u8> {
     vec![pattern; size]
 }
-
 
 //===================
 // Happy Path
@@ -932,7 +929,11 @@ async fn test_overwrite_collision_replaces_existing_file() {
     });
 
     let request = build_json_request("/receive/manifest", manifest, &token);
-    let response = app.clone().oneshot(request).await.expect("manifest request");
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("manifest request");
     assert_eq!(response.status(), StatusCode::OK);
     let lock_token = extract_json(response).await["lockToken"]
         .as_str()
@@ -964,13 +965,20 @@ async fn test_overwrite_collision_replaces_existing_file() {
         build_finalize_request("/receive/finalize", "overwrite_me.txt", &token),
         &lock_token,
     );
-    let response = app.clone().oneshot(request).await.expect("finalize request");
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("finalize request");
     assert_eq!(response.status(), StatusCode::OK);
 
     let written = tokio::fs::read(temp_dir.path().join("overwrite_me.txt"))
         .await
         .expect("read output file");
-    assert_eq!(written, new_content, "file should contain new content after overwrite");
+    assert_eq!(
+        written, new_content,
+        "file should contain new content after overwrite"
+    );
 }
 
 #[tokio::test]
@@ -995,13 +1003,23 @@ async fn test_complete_rejected_when_files_not_finalized() {
         .unwrap()
         .to_string();
 
-    let request = with_lock_token(build_complete_request("/receive/complete", &token), &lock_token);
-    let response = app.clone().oneshot(request).await.expect("complete request");
+    let request = with_lock_token(
+        build_complete_request("/receive/complete", &token),
+        &lock_token,
+    );
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("complete request");
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     let body = extract_json(response).await;
     let message = body["error"]["message"].as_str().unwrap_or("");
-    assert!(message.contains("incomplete"), "unexpected message: {message}");
+    assert!(
+        message.contains("incomplete"),
+        "unexpected message: {message}"
+    );
 }
 
 #[tokio::test]
@@ -1046,7 +1064,11 @@ async fn test_complete_succeeds_after_all_files_finalized() {
         ),
         &lock_token,
     );
-    let chunk_response = app.clone().oneshot(chunk_request).await.expect("chunk request");
+    let chunk_response = app
+        .clone()
+        .oneshot(chunk_request)
+        .await
+        .expect("chunk request");
     assert_eq!(chunk_response.status(), StatusCode::OK);
 
     let finalize_request = with_lock_token(
@@ -1060,7 +1082,10 @@ async fn test_complete_succeeds_after_all_files_finalized() {
         .expect("finalize request");
     assert_eq!(finalize_response.status(), StatusCode::OK);
 
-    let complete_request = with_lock_token(build_complete_request("/receive/complete", &token), &lock_token);
+    let complete_request = with_lock_token(
+        build_complete_request("/receive/complete", &token),
+        &lock_token,
+    );
     let complete_response = app
         .clone()
         .oneshot(complete_request)
@@ -1088,7 +1113,14 @@ async fn test_complete_accepts_empty_manifest() {
         .unwrap()
         .to_string();
 
-    let request = with_lock_token(build_complete_request("/receive/complete", &token), &lock_token);
-    let response = app.clone().oneshot(request).await.expect("complete request");
+    let request = with_lock_token(
+        build_complete_request("/receive/complete", &token),
+        &lock_token,
+    );
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("complete request");
     assert_eq!(response.status(), StatusCode::OK);
 }

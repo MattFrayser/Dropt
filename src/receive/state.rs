@@ -16,7 +16,7 @@ use tokio::sync::Mutex;
 pub struct FileReceiveState {
     pub storage: ChunkStorage,
     pub total_chunks: usize,
-    pub nonce: Option<Nonce>,  // stored once, validated on subsequent chunks
+    pub nonce: Option<Nonce>, // stored once, validated on subsequent chunks
     pub file_index: usize,
 }
 
@@ -85,7 +85,6 @@ impl ReceiveAppState {
         let total = self.total_chunks.load(Ordering::SeqCst);
         (chunks_received, total)
     }
-
 }
 
 #[async_trait::async_trait]

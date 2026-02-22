@@ -1,6 +1,5 @@
 mod common;
 
-use dropt::server::auth::{BearerToken, LockToken};
 use axum::{
     http::{Method, StatusCode},
     response::IntoResponse,
@@ -8,6 +7,7 @@ use axum::{
     Router,
 };
 use common::send_http::{build_request, extract_json};
+use dropt::server::auth::{BearerToken, LockToken};
 use tower::ServiceExt;
 
 fn create_app() -> Router {
@@ -24,7 +24,12 @@ fn create_app() -> Router {
 #[tokio::test]
 async fn rejects_empty_bearer_token_header() {
     let app = create_app();
-    let request = build_request(Method::GET, "/protected", Some("Bearer "), Some("lock-token"));
+    let request = build_request(
+        Method::GET,
+        "/protected",
+        Some("Bearer "),
+        Some("lock-token"),
+    );
     let response = app.oneshot(request).await.expect("send request");
 
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
@@ -77,7 +82,12 @@ async fn rejects_missing_transfer_lock_header() {
 #[tokio::test]
 async fn rejects_empty_transfer_lock_header() {
     let app = create_app();
-    let request = build_request(Method::GET, "/protected", Some("Bearer token123"), Some("   "));
+    let request = build_request(
+        Method::GET,
+        "/protected",
+        Some("Bearer token123"),
+        Some("   "),
+    );
     let response = app.oneshot(request).await.expect("send request");
 
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);

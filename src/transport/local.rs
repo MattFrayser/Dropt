@@ -40,7 +40,11 @@ pub async fn start_local_server(
         "Failed to bind to port {}.\n\n\
          Is another dropt instance running?\n\
          Try a different port: dropt send --port <PORT> or --port 0 for auto-assign",
-        if port == 0 { "(auto-assign)".to_string() } else { port.to_string() }
+        if port == 0 {
+            "(auto-assign)".to_string()
+        } else {
+            port.to_string()
+        }
     ))?;
 
     listener
@@ -72,19 +76,17 @@ pub async fn start_local_server(
                 Ok(())
             })
         }
-        Protocol::Http => {
-            tokio::spawn(async move {
-                if let Err(err) = axum_server::from_tcp(listener)
-                    .handle(server_handle_clone)
-                    .serve(app.into_make_service())
-                    .await
-                {
-                    tracing::error!(error = %err, "HTTP server terminated");
-                    return Err(anyhow!(err));
-                }
-                Ok(())
-            })
-        }
+        Protocol::Http => tokio::spawn(async move {
+            if let Err(err) = axum_server::from_tcp(listener)
+                .handle(server_handle_clone)
+                .serve(app.into_make_service())
+                .await
+            {
+                tracing::error!(error = %err, "HTTP server terminated");
+                return Err(anyhow!(err));
+            }
+            Ok(())
+        }),
     };
 
     await_server_startup_probe(server_task).await?;
@@ -92,7 +94,9 @@ pub async fn start_local_server(
     Ok((port, server_handle))
 }
 
-async fn await_server_startup_probe(server_task: tokio::task::JoinHandle<Result<()>>) -> Result<()> {
+async fn await_server_startup_probe(
+    server_task: tokio::task::JoinHandle<Result<()>>,
+) -> Result<()> {
     tokio::task::yield_now().await;
 
     if !server_task.is_finished() {

@@ -107,8 +107,12 @@ impl ProgressTracker {
     /// `Skipped` marks the file terminal immediately (no chunks will arrive).
     /// `Renamed` and `Overwrote` are stored but non-terminal — chunks still transfer.
     pub fn file_collision_outcome(&self, index: usize, outcome: CollisionOutcome) {
-        let Some(fs) = self.file_state.get() else { return };
-        if index >= fs.names.len() { return }
+        let Some(fs) = self.file_state.get() else {
+            return;
+        };
+        if index >= fs.names.len() {
+            return;
+        }
 
         let mut outcomes = fs.outcomes.lock().unwrap();
         outcomes.entry(index).or_insert(outcome);
@@ -120,7 +124,8 @@ impl ProgressTracker {
             let total = fs.total_chunks[index];
             let prev = fs.done_chunks[index].swap(total, Ordering::Relaxed);
             if prev < total {
-                self.completed_chunks.fetch_add(total - prev, Ordering::Relaxed);
+                self.completed_chunks
+                    .fetch_add(total - prev, Ordering::Relaxed);
             }
         }
     }

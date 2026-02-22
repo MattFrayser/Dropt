@@ -18,7 +18,10 @@ use dropt::server::routes;
 //===========
 // App Factory
 //===========
-pub fn create_receive_test_app(output_dir: PathBuf, key: EncryptionKey) -> (Router, ReceiveAppState) {
+pub fn create_receive_test_app(
+    output_dir: PathBuf,
+    key: EncryptionKey,
+) -> (Router, ReceiveAppState) {
     create_receive_test_app_with_policy(output_dir, key, CollisionPolicy::default())
 }
 

@@ -12,6 +12,12 @@
 
 mod common;
 
+use axum::{http::StatusCode, Router};
+use common::receive_http::{
+    build_finalize_request, build_json_request, build_multipart_request, create_receive_test_app,
+    extract_json, with_lock_token,
+};
+use common::{create_cipher, setup_temp_dir, CHUNK_SIZE};
 use dropt::common::CollisionPolicy;
 use dropt::common::Session;
 use dropt::common::TransferSettings;
@@ -20,15 +26,6 @@ use dropt::receive::ChunkStorage;
 use dropt::receive::ReceiveAppState;
 use dropt::server::progress::ProgressTracker;
 use dropt::server::routes;
-use axum::{
-    http::StatusCode,
-    Router,
-};
-use common::receive_http::{
-    build_finalize_request, build_json_request, build_multipart_request, create_receive_test_app,
-    extract_json, with_lock_token,
-};
-use common::{create_cipher, setup_temp_dir, CHUNK_SIZE};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -46,7 +43,13 @@ fn create_test_app_with_config(
     config: TransferSettings,
 ) -> (Router, ReceiveAppState) {
     let progress = Arc::new(ProgressTracker::new());
-    let state = ReceiveAppState::new(key, output_dir, progress, config, CollisionPolicy::default());
+    let state = ReceiveAppState::new(
+        key,
+        output_dir,
+        progress,
+        config,
+        CollisionPolicy::default(),
+    );
     let app = routes::create_receive_router(&state);
     (app, state)
 }
@@ -58,7 +61,6 @@ fn create_test_data(pattern: u8, size: usize) -> Vec<u8> {
 fn create_chunk_data(pattern: u8, size_mb: usize) -> Vec<u8> {
     vec![pattern; size_mb * CHUNK_1MB]
 }
-
 
 //======================
 // Concurrency Stress Tests

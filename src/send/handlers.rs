@@ -300,7 +300,9 @@ fn apply_skipped_reports(state: &SendAppState, reports: Vec<SkippedFileReport>) 
         let file_chunks = file.size.div_ceil(state.config.chunk_size);
         skipped_chunks = skipped_chunks.saturating_add(file_chunks);
         skipped_files += 1;
-        state.progress.file_collision_outcome(report.file_index, CollisionOutcome::Skipped);
+        state
+            .progress
+            .file_collision_outcome(report.file_index, CollisionOutcome::Skipped);
     }
 
     (skipped_files, skipped_chunks)
@@ -312,7 +314,10 @@ mod tests {
 
     #[test]
     fn normalize_skip_reason_accepts_known_codes_only() {
-        assert_eq!(normalize_skip_reason("browser_limit"), Some("browser_limit"));
+        assert_eq!(
+            normalize_skip_reason("browser_limit"),
+            Some("browser_limit")
+        );
         assert_eq!(normalize_skip_reason("user_skipped"), Some("user_skipped"));
         assert_eq!(normalize_skip_reason("disk_full"), None);
     }

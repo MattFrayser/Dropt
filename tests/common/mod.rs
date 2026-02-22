@@ -4,9 +4,9 @@ pub mod config_test_utils;
 pub mod receive_http;
 pub mod send_http;
 
+use aws_lc_rs::aead::{LessSafeKey, UnboundKey, AES_256_GCM};
 use dropt::common::TransferSettings;
 use dropt::crypto::types::EncryptionKey;
-use aws_lc_rs::aead::{LessSafeKey, UnboundKey, AES_256_GCM};
 use tempfile::TempDir;
 
 pub const CHUNK_SIZE: usize = 10 * 1024 * 1024; // 10MB

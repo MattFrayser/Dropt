@@ -86,7 +86,9 @@ fn calculate_layout(
     };
 
     let status_height = status_message
-        .map(|message| ((message.lines().count() as u16).max(1) + 2).clamp(3, STATUS_PANEL_MAX_HEIGHT))
+        .map(|message| {
+            ((message.lines().count() as u16).max(1) + 2).clamp(3, STATUS_PANEL_MAX_HEIGHT)
+        })
         .unwrap_or(0);
 
     let main_chunks = Layout::default()

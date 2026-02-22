@@ -57,7 +57,9 @@ pub fn build_request(
     if let Some(lock) = lock_token {
         builder = builder.header(LOCK_HEADER_NAME, lock);
     }
-    builder.body(Body::empty()).expect("Failed to build request")
+    builder
+        .body(Body::empty())
+        .expect("Failed to build request")
 }
 
 pub fn build_bearer_request(
