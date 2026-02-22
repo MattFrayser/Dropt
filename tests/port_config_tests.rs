@@ -1,9 +1,7 @@
 mod common;
 
-use dropt::common::config::{
-    apply_overrides, load_config, AppConfig, ConfigOverrides, Transport,
-};
-use common::config_test_utils::with_config_env;
+use common::config_test_utils::load_test_config;
+use dropt::common::config::{apply_overrides, AppConfig, ConfigOverrides, Transport};
 
 #[test]
 fn default_port_is_zero_for_all_transports() {
@@ -15,30 +13,26 @@ fn default_port_is_zero_for_all_transports() {
 
 #[test]
 fn cli_port_applies_to_effective_transport() {
-    with_config_env("", || {
-        let overrides = ConfigOverrides {
-            transport: Some(Transport::Local),
-            port: Some(9999),
-        };
-        let config = load_config().unwrap();
-        let config = apply_overrides(config, &overrides);
-        assert_eq!(config.port(Transport::Local), 9999);
-        assert_eq!(config.port(Transport::Cloudflare), 0);
-        assert_eq!(config.port(Transport::Tailscale), 0);
-    });
+    let overrides = ConfigOverrides {
+        transport: Some(Transport::Local),
+        port: Some(9999),
+    };
+    let config = load_test_config("", &[]).expect("load config");
+    let config = apply_overrides(config, &overrides);
+    assert_eq!(config.port(Transport::Local), 9999);
+    assert_eq!(config.port(Transport::Cloudflare), 0);
+    assert_eq!(config.port(Transport::Tailscale), 0);
 }
 
 #[test]
 fn no_cli_port_uses_default() {
-    with_config_env("", || {
-        let config = load_config().unwrap();
-        assert_eq!(config.port(Transport::Local), 0);
-    });
+    let config = load_test_config("", &[]).expect("load config");
+    assert_eq!(config.port(Transport::Local), 0);
 }
 
 #[test]
 fn cli_port_applies_only_to_selected_transport() {
-    with_config_env(
+    let config = load_test_config(
         r#"
         [local]
         port = 1111
@@ -49,24 +43,24 @@ fn cli_port_applies_only_to_selected_transport() {
         [tailscale]
         port = 3333
         "#,
-        || {
-            let overrides = ConfigOverrides {
-                transport: Some(Transport::Cloudflare),
-                port: Some(4444),
-            };
+        &[],
+    )
+    .expect("load config");
 
-            let config = load_config().expect("load config");
-            let config = apply_overrides(config, &overrides);
-            assert_eq!(config.port(Transport::Cloudflare), 4444);
-            assert_eq!(config.port(Transport::Local), 1111);
-            assert_eq!(config.port(Transport::Tailscale), 3333);
-        },
-    );
+    let overrides = ConfigOverrides {
+        transport: Some(Transport::Cloudflare),
+        port: Some(4444),
+    };
+
+    let config = apply_overrides(config, &overrides);
+    assert_eq!(config.port(Transport::Cloudflare), 4444);
+    assert_eq!(config.port(Transport::Local), 1111);
+    assert_eq!(config.port(Transport::Tailscale), 3333);
 }
 
 #[test]
 fn cli_port_applies_to_default_transport_when_via_omitted() {
-    with_config_env(
+    let config = load_test_config(
         r#"
         default_transport = "tailscale"
 
@@ -79,17 +73,17 @@ fn cli_port_applies_to_default_transport_when_via_omitted() {
         [tailscale]
         port = 3333
         "#,
-        || {
-            let overrides = ConfigOverrides {
-                transport: None,
-                port: Some(4444),
-            };
+        &[],
+    )
+    .expect("load config");
 
-            let config = load_config().expect("load config");
-            let config = apply_overrides(config, &overrides);
-            assert_eq!(config.port(Transport::Tailscale), 4444);
-            assert_eq!(config.port(Transport::Local), 1111);
-            assert_eq!(config.port(Transport::Cloudflare), 2222);
-        },
-    );
+    let overrides = ConfigOverrides {
+        transport: None,
+        port: Some(4444),
+    };
+
+    let config = apply_overrides(config, &overrides);
+    assert_eq!(config.port(Transport::Tailscale), 4444);
+    assert_eq!(config.port(Transport::Local), 1111);
+    assert_eq!(config.port(Transport::Cloudflare), 2222);
 }

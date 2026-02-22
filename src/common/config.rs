@@ -4,11 +4,11 @@
 use anyhow::{ensure, Context, Result};
 use directories::ProjectDirs;
 use figment::{
-    providers::{Env, Format, Serialized, Toml},
+    providers::{Format, Serialized, Toml},
     Figment,
 };
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub const MAX_TRANSFER_CHUNK_SIZE_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_CONCURRENCY: usize = 256;
@@ -238,12 +238,202 @@ pub fn config_path() -> PathBuf {
 pub fn load_config() -> Result<AppConfig> {
     let path = config_path();
 
+    load_config_from_path_and_env_pairs(&path, std::env::vars())
+}
+
+fn load_file_and_defaults(path: &Path) -> Result<AppConfig> {
     let config: AppConfig = Figment::new()
         .merge(Serialized::defaults(AppConfig::default()))
-        .merge(Toml::file(&path))
-        .merge(Env::prefixed("DROPT_").split("_"))
+        .merge(Toml::file(path))
         .extract()
         .context("Failed to load configuration")?;
+
+    Ok(config)
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct EnvOverrides {
+    default_transport: Option<Transport>,
+    zip: Option<bool>,
+    local_port: Option<u16>,
+    cloudflare_port: Option<u16>,
+    tailscale_port: Option<u16>,
+    local_chunk_size: Option<u64>,
+    cloudflare_chunk_size: Option<u64>,
+    tailscale_chunk_size: Option<u64>,
+    local_concurrency: Option<usize>,
+    cloudflare_concurrency: Option<usize>,
+    tailscale_concurrency: Option<usize>,
+    tui_show_qr: Option<bool>,
+    tui_show_url: Option<bool>,
+    on_conflict: Option<CollisionPolicy>,
+}
+
+fn parse_bool(key: &str, value: &str) -> Result<bool> {
+    value
+        .parse::<bool>()
+        .with_context(|| format!("Invalid env value for {key}: expected true or false"))
+}
+
+fn parse_u16(key: &str, value: &str) -> Result<u16> {
+    value
+        .parse::<u16>()
+        .with_context(|| format!("Invalid env value for {key}: expected u16 integer"))
+}
+
+fn parse_u64(key: &str, value: &str) -> Result<u64> {
+    value
+        .parse::<u64>()
+        .with_context(|| format!("Invalid env value for {key}: expected u64 integer"))
+}
+
+fn parse_usize(key: &str, value: &str) -> Result<usize> {
+    value
+        .parse::<usize>()
+        .with_context(|| format!("Invalid env value for {key}: expected usize integer"))
+}
+
+fn parse_transport(key: &str, value: &str) -> Result<Transport> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "local" => Ok(Transport::Local),
+        "cloudflare" => Ok(Transport::Cloudflare),
+        "tailscale" => Ok(Transport::Tailscale),
+        _ => anyhow::bail!(
+            "Invalid env value for {key}: expected one of local, cloudflare, tailscale"
+        ),
+    }
+}
+
+fn parse_collision_policy(key: &str, value: &str) -> Result<CollisionPolicy> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "suffix" => Ok(CollisionPolicy::Suffix),
+        "overwrite" => Ok(CollisionPolicy::Overwrite),
+        "skip" => Ok(CollisionPolicy::Skip),
+        _ => anyhow::bail!("Invalid env value for {key}: expected one of suffix, overwrite, skip"),
+    }
+}
+
+fn parse_env_overrides<I, K, V>(env_pairs: I) -> Result<EnvOverrides>
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<str>,
+    V: AsRef<str>,
+{
+    let mut overrides = EnvOverrides::default();
+
+    for (raw_key, raw_value) in env_pairs {
+        let key = raw_key.as_ref();
+        let value = raw_value.as_ref();
+
+        if !key.starts_with("DROPT_") {
+            continue;
+        }
+
+        match key {
+            "DROPT_DEFAULT_TRANSPORT" => {
+                overrides.default_transport = Some(parse_transport(key, value)?);
+            }
+            "DROPT_ZIP" => {
+                overrides.zip = Some(parse_bool(key, value)?);
+            }
+            "DROPT_LOCAL_PORT" => {
+                overrides.local_port = Some(parse_u16(key, value)?);
+            }
+            "DROPT_CLOUDFLARE_PORT" => {
+                overrides.cloudflare_port = Some(parse_u16(key, value)?);
+            }
+            "DROPT_TAILSCALE_PORT" => {
+                overrides.tailscale_port = Some(parse_u16(key, value)?);
+            }
+            "DROPT_LOCAL_CHUNK_SIZE" => {
+                overrides.local_chunk_size = Some(parse_u64(key, value)?);
+            }
+            "DROPT_CLOUDFLARE_CHUNK_SIZE" => {
+                overrides.cloudflare_chunk_size = Some(parse_u64(key, value)?);
+            }
+            "DROPT_TAILSCALE_CHUNK_SIZE" => {
+                overrides.tailscale_chunk_size = Some(parse_u64(key, value)?);
+            }
+            "DROPT_LOCAL_CONCURRENCY" => {
+                overrides.local_concurrency = Some(parse_usize(key, value)?);
+            }
+            "DROPT_CLOUDFLARE_CONCURRENCY" => {
+                overrides.cloudflare_concurrency = Some(parse_usize(key, value)?);
+            }
+            "DROPT_TAILSCALE_CONCURRENCY" => {
+                overrides.tailscale_concurrency = Some(parse_usize(key, value)?);
+            }
+            "DROPT_TUI_SHOW_QR" => {
+                overrides.tui_show_qr = Some(parse_bool(key, value)?);
+            }
+            "DROPT_TUI_SHOW_URL" => {
+                overrides.tui_show_url = Some(parse_bool(key, value)?);
+            }
+            "DROPT_ON_CONFLICT" => {
+                overrides.on_conflict = Some(parse_collision_policy(key, value)?);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(overrides)
+}
+
+fn apply_env_overrides(config: &mut AppConfig, overrides: EnvOverrides) {
+    if let Some(transport) = overrides.default_transport {
+        config.default_transport = transport;
+    }
+    if let Some(zip) = overrides.zip {
+        config.zip = zip;
+    }
+    if let Some(port) = overrides.local_port {
+        config.local.port = port;
+    }
+    if let Some(port) = overrides.cloudflare_port {
+        config.cloudflare.port = port;
+    }
+    if let Some(port) = overrides.tailscale_port {
+        config.tailscale.port = port;
+    }
+    if let Some(chunk_size) = overrides.local_chunk_size {
+        config.local.transfer.chunk_size = chunk_size;
+    }
+    if let Some(chunk_size) = overrides.cloudflare_chunk_size {
+        config.cloudflare.transfer.chunk_size = chunk_size;
+    }
+    if let Some(chunk_size) = overrides.tailscale_chunk_size {
+        config.tailscale.transfer.chunk_size = chunk_size;
+    }
+    if let Some(concurrency) = overrides.local_concurrency {
+        config.local.transfer.concurrency = concurrency;
+    }
+    if let Some(concurrency) = overrides.cloudflare_concurrency {
+        config.cloudflare.transfer.concurrency = concurrency;
+    }
+    if let Some(concurrency) = overrides.tailscale_concurrency {
+        config.tailscale.transfer.concurrency = concurrency;
+    }
+    if let Some(show_qr) = overrides.tui_show_qr {
+        config.tui.show_qr = show_qr;
+    }
+    if let Some(show_url) = overrides.tui_show_url {
+        config.tui.show_url = show_url;
+    }
+    if let Some(on_conflict) = overrides.on_conflict {
+        config.on_conflict = on_conflict;
+    }
+}
+
+#[doc(hidden)]
+pub fn load_config_from_path_and_env_pairs<I, K, V>(path: &Path, env_pairs: I) -> Result<AppConfig>
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<str>,
+    V: AsRef<str>,
+{
+    let mut config = load_file_and_defaults(path)?;
+    let env_overrides = parse_env_overrides(env_pairs)?;
+    apply_env_overrides(&mut config, env_overrides);
 
     config.validate()?;
 

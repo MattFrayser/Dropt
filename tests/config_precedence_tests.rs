@@ -1,77 +1,77 @@
 mod common;
 
-use dropt::common::config::{apply_overrides, load_config, ConfigOverrides, Transport};
-use common::config_test_utils::with_config_env;
+use common::config_test_utils::load_test_config;
+use dropt::common::config::{apply_overrides, ConfigOverrides, Transport};
 
 #[test]
 fn precedence_defaults_file_env_cli() {
-    with_config_env(
+    let config = load_test_config(
         r#"
         [local]
         port = 1111
         "#,
-        || {
-            std::env::set_var("DROPT_LOCAL_PORT", "2222");
+        &[("DROPT_LOCAL_PORT", "2222")],
+    )
+    .expect("load config");
 
-            let overrides = ConfigOverrides {
-                transport: Some(Transport::Local),
-                port: Some(3333),
-            };
+    let overrides = ConfigOverrides {
+        transport: Some(Transport::Local),
+        port: Some(3333),
+    };
 
-            let config = load_config().expect("load config");
-            let config = apply_overrides(config, &overrides);
-            assert_eq!(config.port(Transport::Local), 3333);
-        },
-    );
+    let config = apply_overrides(config, &overrides);
+    assert_eq!(config.port(Transport::Local), 3333);
 }
 
 #[test]
 fn precedence_defaults_file_env_without_cli() {
-    with_config_env(
+    let config = load_test_config(
         r#"
         [local]
         port = 1111
         "#,
-        || {
-            std::env::set_var("DROPT_LOCAL_PORT", "2222");
+        &[("DROPT_LOCAL_PORT", "2222")],
+    )
+    .expect("load config");
 
-            let config = load_config().expect("load config");
-            assert_eq!(config.port(Transport::Local), 2222);
-        },
-    );
+    assert_eq!(config.port(Transport::Local), 2222);
 }
 
 #[test]
 fn zip_defaults_to_false() {
-    with_config_env("", || {
-        let config = load_config().expect("load config");
-        assert!(!config.zip);
-    });
+    let config = load_test_config("", &[]).expect("load config");
+    assert!(!config.zip);
 }
 
 #[test]
 fn zip_reads_from_config_file() {
-    with_config_env(
+    let config = load_test_config(
         r#"
         zip = true
         "#,
-        || {
-            let config = load_config().expect("load config");
-            assert!(config.zip);
-        },
-    );
+        &[],
+    )
+    .expect("load config");
+
+    assert!(config.zip);
 }
 
 #[test]
 fn zip_env_overrides_config_file() {
-    with_config_env(
+    let config = load_test_config(
         r#"
         zip = false
         "#,
-        || {
-            std::env::set_var("DROPT_ZIP", "true");
-            let config = load_config().expect("load config");
-            assert!(config.zip);
-        },
-    );
+        &[("DROPT_ZIP", "true")],
+    )
+    .expect("load config");
+
+    assert!(config.zip);
+}
+
+#[test]
+fn unknown_env_keys_are_ignored() {
+    let config = load_test_config("", &[("DROPT_NOT_A_REAL_KEY", "value")]).expect("load config");
+
+    assert_eq!(config.port(Transport::Local), 0);
 }
