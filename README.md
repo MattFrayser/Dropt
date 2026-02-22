@@ -2,22 +2,15 @@
 <p align="center">Secure peer-to-peer file transfer from Linux to any browser.</p>
 
 <p align="center">
-  <a href="#quick-start">Quick Start</a> ·
-  <a href="#installation">Install</a> ·
-  <a href="#usage">Usage</a> ·
-  <a href="#security">Security</a> ·
-  <a href="#faq">FAQ</a>
+  <a href="https://www.rust-lang.org/">
+    <img src="https://img.shields.io/badge/rust-1.85%2B-orange.svg" alt="Rust 1.85+" />
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" />
+  </a>
 </p>
-
-[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
 
 ---
-
-<p align="center">
-  <img src="docs/assets/readme/demo.gif" alt="dropt demo" width="880" />
-</p>
-
-> Add your product demo GIF at `docs/assets/readme/demo.gif`.
 
 ---
 
@@ -66,7 +59,7 @@ sudo install -m 0755 target/release/dropt /usr/local/bin/dropt
 
 **Linux host:**
 - Linux kernel 2.6+
-- Rust 1.70+ (source builds only)
+- Rust 1.85+ (source builds only)
 - Optional: `cloudflared` for Cloudflare tunnels
 - Optional: `tailscale` and running `tailscaled` for Tailscale funnels
 
@@ -189,4 +182,3 @@ MIT. See `LICENSE`.
 ## Project Status
 
 Active development. Interfaces and flags may evolve before `1.0`.
-

@@ -221,6 +221,8 @@ async fn test_concurrent_chunks_different_files() {
     let lock_token = manifest_json["lockToken"].as_str().unwrap().to_string();
 
     // Upload all 18 chunks concurrently (3 files x 6 chunks)
+    // Each file stream must keep a stable base nonce across all chunks.
+    let file_nonce_b64: Vec<String> = (0..num_files).map(|_| Nonce::new().to_base64()).collect();
     let mut tasks = vec![];
     for file_idx in 0..num_files {
         for chunk_idx in 0..chunks_per_file {
@@ -229,12 +231,13 @@ async fn test_concurrent_chunks_different_files() {
             let key = key.clone();
             let lock_token = lock_token.clone();
             let filename = format!("file{}.bin", file_idx);
+            let nonce_b64 = file_nonce_b64[file_idx].clone();
+            let nonce = Nonce::from_base64(&nonce_b64).unwrap();
 
             tasks.push(tokio::spawn(async move {
                 // Distinct pattern: file_idx * 10 + chunk_idx
                 let pattern = (file_idx * 10 + chunk_idx) as u8;
                 let chunk_data = create_test_data(pattern, CHUNK_SIZE);
-                let nonce = Nonce::new();
 
                 let cipher = create_cipher(&key);
                 let mut encrypted = chunk_data.clone();
@@ -253,7 +256,7 @@ async fn test_concurrent_chunks_different_files() {
                         chunk_idx,
                         chunks_per_file,
                         file_size,
-                        &nonce.to_base64(),
+                        &nonce_b64,
                         encrypted,
                         &token,
                     ),
@@ -456,18 +459,21 @@ async fn test_concurrent_chunk_uploads_mutex_contention() {
     let manifest_json = extract_json(manifest_response).await;
     let lock_token = manifest_json["lockToken"].as_str().unwrap().to_string();
 
-    // Upload all 50 chunks concurrently
+    // Upload all 50 chunks concurrently - all chunks share a base nonce.
+    let shared_nonce = Nonce::new();
+    let nonce_b64 = shared_nonce.to_base64();
     let mut tasks = vec![];
     for chunk_idx in 0..num_chunks {
         let app = app.clone();
         let token = token.clone();
         let key = key.clone();
         let lock_token = lock_token.clone();
+        let nonce_b64 = nonce_b64.clone();
+        let nonce = Nonce::from_base64(&nonce_b64).unwrap();
 
         tasks.push(tokio::spawn(async move {
             let pattern = chunk_idx as u8;
             let chunk_data = create_test_data(pattern, CHUNK_SIZE);
-            let nonce = Nonce::new();
 
             let cipher = create_cipher(&key);
             let mut encrypted = chunk_data.clone();
@@ -486,7 +492,7 @@ async fn test_concurrent_chunk_uploads_mutex_contention() {
                     chunk_idx,
                     num_chunks,
                     file_size,
-                    &nonce.to_base64(),
+                    &nonce_b64,
                     encrypted,
                     &token,
                 ),
