@@ -1,4 +1,4 @@
-use aws_lc_rs::aead::{LessSafeKey, UnboundKey, AES_256_GCM};
+use aws_lc_rs::aead::{AES_256_GCM, LessSafeKey, UnboundKey};
 use dropt::crypto::types::{EncryptionKey, Nonce};
 use dropt::crypto::{decrypt_chunk_in_place, encrypt_chunk_in_place};
 

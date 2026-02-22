@@ -1,7 +1,7 @@
-use anyhow::{ensure, Context, Result};
+use anyhow::{Context, Result, ensure};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use dropt::{
-    common::{config, config_commands, CollisionPolicy, ConfigOverrides, Manifest, Transport},
+    common::{CollisionPolicy, ConfigOverrides, Manifest, Transport, config, config_commands},
     send, server,
 };
 use std::path::PathBuf;
@@ -276,7 +276,7 @@ fn resolve_zip_enabled(zip: bool, no_zip: bool, config_zip: bool) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_zip_enabled, Cli, Commands};
+    use super::{Cli, Commands, resolve_zip_enabled};
     use clap::Parser;
 
     #[test]

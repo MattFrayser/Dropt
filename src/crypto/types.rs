@@ -1,6 +1,6 @@
-use base64::{engine::general_purpose, Engine};
-use rand::rngs::OsRng;
+use base64::{Engine, engine::general_purpose};
 use rand::RngCore;
+use rand::rngs::OsRng;
 
 // OSRng pulls from Operating system
 // It is more cryptographically secure than PRNG, but slower

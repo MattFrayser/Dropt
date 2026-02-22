@@ -4,7 +4,7 @@ pub mod config_test_utils;
 pub mod receive_http;
 pub mod send_http;
 
-use aws_lc_rs::aead::{LessSafeKey, UnboundKey, AES_256_GCM};
+use aws_lc_rs::aead::{AES_256_GCM, LessSafeKey, UnboundKey};
 use dropt::common::TransferSettings;
 use dropt::crypto::types::EncryptionKey;
 use tempfile::TempDir;

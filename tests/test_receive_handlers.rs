@@ -5,7 +5,7 @@ use common::receive_http::{
     build_complete_request, build_finalize_request, build_json_request, build_multipart_request,
     create_receive_test_app, create_receive_test_app_with_policy, extract_json, with_lock_token,
 };
-use common::{create_cipher, setup_temp_dir, CHUNK_SIZE};
+use common::{CHUNK_SIZE, create_cipher, setup_temp_dir};
 use dropt::common::CollisionPolicy;
 use dropt::crypto::types::{EncryptionKey, Nonce};
 use tower::ServiceExt;

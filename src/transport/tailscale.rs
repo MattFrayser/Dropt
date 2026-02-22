@@ -1,6 +1,6 @@
 //! Tailscale funnel lifecycle management.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
 use tailscale_localapi::LocalApi;
 use thiserror::Error;

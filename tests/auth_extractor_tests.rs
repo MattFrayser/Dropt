@@ -1,10 +1,10 @@
 mod common;
 
 use axum::{
+    Router,
     http::{Method, StatusCode},
     response::IntoResponse,
     routing::get,
-    Router,
 };
 use common::send_http::{build_request, extract_json};
 use dropt::server::auth::{BearerToken, LockToken};

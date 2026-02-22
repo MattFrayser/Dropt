@@ -18,7 +18,7 @@ use common::receive_http::{
     build_json_request, build_multipart_request, create_receive_test_app, extract_json,
     with_lock_token,
 };
-use common::{create_cipher, setup_temp_dir, CHUNK_SIZE};
+use common::{CHUNK_SIZE, create_cipher, setup_temp_dir};
 use dropt::crypto::types::{EncryptionKey, Nonce};
 use tower::ServiceExt;
 

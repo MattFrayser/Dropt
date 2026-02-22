@@ -1,15 +1,15 @@
 //! Shared send-session state and transfer-state implementation.
 
 use crate::common::config::TransferSettings;
-use crate::common::{manifest::FileEntry, Manifest, Session, TransferState};
+use crate::common::{Manifest, Session, TransferState, manifest::FileEntry};
 use crate::crypto::types::EncryptionKey;
 use crate::send::buffer_pool::BufferPool;
 use crate::send::file_handle::SendFileHandle;
 use crate::server::progress::ProgressTracker;
 use dashmap::DashMap;
 use std::ops::Deref;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Cheaply cloned handle to send state stored behind `Arc`.
 #[derive(Clone)]

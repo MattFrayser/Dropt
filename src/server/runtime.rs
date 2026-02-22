@@ -1,13 +1,13 @@
 //! Runtime lifecycle: start servers, run session UI loop, and shutdown.
 
-use crate::common::config::{AppConfig, Transport};
 use crate::common::TransferState;
+use crate::common::config::{AppConfig, Transport};
 use crate::crypto::types::Nonce;
-use crate::server::progress::ProgressTracker;
 use crate::server::ServerInstance;
-use crate::transport::local::{get_local_ip, start_local_server, BindScope, Protocol};
+use crate::server::progress::ProgressTracker;
+use crate::transport::local::{BindScope, Protocol, get_local_ip, start_local_server};
 use crate::transport::tunnel::Tunnel;
-use crate::ui::tui::{generate_qr, spawn_tui, spinner, spinner_error, spinner_success, TuiConfig};
+use crate::ui::tui::{TuiConfig, generate_qr, spawn_tui, spinner, spinner_error, spinner_success};
 use anyhow::{Context, Result};
 use std::io::{self, Write};
 use std::sync::Arc;

@@ -1,7 +1,7 @@
 //! Session authentication and lock lifecycle primitives.
 
 use crate::crypto::types::EncryptionKey;
-use aws_lc_rs::aead::{LessSafeKey, UnboundKey, AES_256_GCM};
+use aws_lc_rs::aead::{AES_256_GCM, LessSafeKey, UnboundKey};
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 

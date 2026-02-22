@@ -8,15 +8,15 @@ use crate::common::{AppError, CollisionOutcome};
 use crate::crypto::types::Nonce;
 use crate::receive::state::{FileReceiveState, ReceiveAppState};
 use crate::receive::storage::{
-    self, find_available_path, resolve_collision, ChunkStorage, CollisionResolution,
+    self, ChunkStorage, CollisionResolution, find_available_path, resolve_collision,
 };
 use crate::server::auth::{self, BearerToken, LockToken};
 use crate::utils::security;
 use anyhow::{Context, Result};
-use axum::extract::{Multipart, State};
 use axum::Json;
+use axum::extract::{Multipart, State};
 use axum_typed_multipart::{TryFromMultipart, TypedMultipart};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::sync::Mutex;
 use tokio_util::bytes::Bytes;
 

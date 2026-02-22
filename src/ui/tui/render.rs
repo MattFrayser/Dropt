@@ -7,14 +7,14 @@ use std::time::{Duration, Instant};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     prelude::{CrosstermBackend, Terminal},
     style::{Color, Modifier, Style},
     widgets::{Block, BorderType, Borders, Paragraph},
-    Frame,
 };
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;

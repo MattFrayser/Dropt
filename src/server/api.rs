@@ -1,8 +1,8 @@
 //! High-level server builders for send and receive modes.
 
 use super::runtime;
-use crate::common::config::{AppConfig, CollisionPolicy, Transport};
 use crate::common::Manifest;
+use crate::common::config::{AppConfig, CollisionPolicy, Transport};
 use crate::crypto::types::{EncryptionKey, Nonce};
 use crate::receive::ReceiveAppState;
 use crate::send::SendAppState;

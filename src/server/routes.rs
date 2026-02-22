@@ -5,7 +5,7 @@ use crate::{
     send::{self, SendAppState},
     ui::web,
 };
-use axum::{extract::DefaultBodyLimit, routing::*, Router};
+use axum::{Router, extract::DefaultBodyLimit, routing::*};
 
 /// Build the router for send endpoints and web assets.
 pub fn create_send_router(state: &SendAppState) -> Router {

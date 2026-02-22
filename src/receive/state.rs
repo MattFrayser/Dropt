@@ -8,8 +8,8 @@ use crate::server::progress::ProgressTracker;
 use dashmap::DashMap;
 use std::ops::Deref;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::Mutex;
 
 /// Per-file receive state tracked across chunk uploads.

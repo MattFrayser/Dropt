@@ -2,9 +2,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::{
+    Router,
     body::Body,
     http::{Method, Request},
-    Router,
 };
 use http_body_util::BodyExt;
 

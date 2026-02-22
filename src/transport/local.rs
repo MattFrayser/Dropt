@@ -3,7 +3,7 @@
 //! - Tunnel mode should bind loopback only.
 //! - Local HTTPS mode may bind all interfaces for LAN access.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use axum_server::tls_rustls::RustlsConfig;
 use rcgen::generate_simple_self_signed;
 use std::net::{SocketAddr, UdpSocket};

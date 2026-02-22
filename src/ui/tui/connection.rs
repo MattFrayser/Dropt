@@ -1,9 +1,9 @@
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::Span,
     widgets::{Block, BorderType, Borders, Paragraph},
-    Frame,
 };
 
 use super::hyperlink::Hyperlink;

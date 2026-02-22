@@ -1,11 +1,11 @@
 //! Configuration schema, defaults, and layered loading.
 //!
 //! Precedence: defaults < config < enviroment < CLI
-use anyhow::{ensure, Context, Result};
+use anyhow::{Context, Result, ensure};
 use directories::ProjectDirs;
 use figment::{
-    providers::{Format, Serialized, Toml},
     Figment,
+    providers::{Format, Serialized, Toml},
 };
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};

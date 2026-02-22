@@ -1,9 +1,9 @@
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::Span,
     widgets::{Block, BorderType, Borders, Gauge, Paragraph},
-    Frame,
 };
 
 use super::styles::muted_style;

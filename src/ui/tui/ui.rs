@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use qrcode::render::unicode;
 use qrcode::QrCode;
+use qrcode::render::unicode;
 
 pub fn generate_qr(url: &str) -> Result<String> {
     let code = QrCode::new(url.as_bytes()).context("Failed to generate QR code")?;

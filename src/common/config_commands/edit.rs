@@ -4,7 +4,7 @@ use super::defaults_toml;
 use super::io::{atomic_write, temp_path_for};
 use crate::common::config::AppConfig;
 use anyhow::{Context, Result};
-use figment::{providers::Format, providers::Serialized, providers::Toml, Figment};
+use figment::{Figment, providers::Format, providers::Serialized, providers::Toml};
 use std::fs;
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::Path;

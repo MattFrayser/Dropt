@@ -1,4 +1,4 @@
-use dropt::common::config::{load_config_from_path_and_env_pairs, AppConfig};
+use dropt::common::config::{AppConfig, load_config_from_path_and_env_pairs};
 
 fn write_config(path: &std::path::Path, contents: &str) {
     std::fs::write(path, contents).expect("write config");

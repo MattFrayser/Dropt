@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use axum::{
+    Router,
     body::Body,
     http::{Method, Request, StatusCode},
-    Router,
 };
 use http_body_util::BodyExt;
 
@@ -14,7 +14,7 @@ use dropt::server::auth::LOCK_HEADER_NAME;
 use dropt::server::progress::ProgressTracker;
 use dropt::server::routes;
 
-use super::{default_config, CHUNK_SIZE};
+use super::{CHUNK_SIZE, default_config};
 
 //===========
 // App Factory

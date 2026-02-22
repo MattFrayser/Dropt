@@ -1,7 +1,7 @@
 mod common;
 
 use common::config_test_utils::load_test_config;
-use dropt::common::config::{apply_overrides, AppConfig, ConfigOverrides, Transport};
+use dropt::common::config::{AppConfig, ConfigOverrides, Transport, apply_overrides};
 
 #[test]
 fn default_port_is_zero_for_all_transports() {

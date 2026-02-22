@@ -2,7 +2,7 @@ mod common;
 
 use common::setup_temp_dir;
 use dropt::common::config::CollisionPolicy;
-use dropt::receive::{resolve_collision, ChunkStorage, CollisionResolution};
+use dropt::receive::{ChunkStorage, CollisionResolution, resolve_collision};
 
 //===============
 // Test Helpers

@@ -1,7 +1,7 @@
 mod common;
 
 use common::config_test_utils::load_test_config;
-use dropt::common::config::{apply_overrides, ConfigOverrides, Transport};
+use dropt::common::config::{ConfigOverrides, Transport, apply_overrides};
 
 #[test]
 fn precedence_defaults_file_env_cli() {

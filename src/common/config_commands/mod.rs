@@ -5,7 +5,7 @@ mod io;
 mod reset;
 mod show;
 
-use crate::common::config::{config_path, AppConfig};
+use crate::common::config::{AppConfig, config_path};
 use anyhow::{Context, Result};
 
 fn defaults_toml() -> Result<String> {

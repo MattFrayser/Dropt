@@ -2,7 +2,7 @@
 
 use super::defaults_toml;
 use super::io::atomic_write;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::Path;
 

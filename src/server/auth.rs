@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 
-use crate::common::{session_core::ClaimError, session_core::Session, AppError};
+use crate::common::{AppError, session_core::ClaimError, session_core::Session};
 
 /// Header name carrying the transfer lock token.
 pub const LOCK_HEADER_NAME: &str = "x-transfer-lock";
