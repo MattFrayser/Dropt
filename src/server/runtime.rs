@@ -217,6 +217,8 @@ async fn run_session<S: TransferState>(
     }
 
     // Spawn TUI (can be disabled with NO_TUI=1 for debugging)
+    let tracker_for_summary = tracker.clone();
+    let tracker_for_no_tui = tracker.clone();
     let tui_handle = if no_tui_enabled() {
         // No TUI mode - poll tracker for completion
         println!("TUI disabled. Press Ctrl+C to stop.");
@@ -225,7 +227,7 @@ async fn run_session<S: TransferState>(
                 tokio::select! {
                     _ = tui_token.cancelled() => break,
                     _ = tokio::time::sleep(Duration::from_millis(500)) => {
-                        if tracker.snapshot().is_complete() {
+                        if tracker_for_no_tui.snapshot().is_complete() {
                             break;
                         }
                     }
@@ -246,7 +248,7 @@ async fn run_session<S: TransferState>(
             show_qr: config.tui.show_qr,
             show_url: config.tui.show_url,
         };
-        spawn_tui(tui_config, tracker, status_receiver, tui_token)
+        spawn_tui(tui_config, tracker.clone(), status_receiver, tui_token)
     };
 
     // Spawn Ctrl+C handler — cancels root_token on first Ctrl+C
@@ -273,6 +275,32 @@ async fn run_session<S: TransferState>(
 
     // Ensure TUI stops
     root_token.cancel();
+
+    // Print transfer summary to stdout (visible after TUI restores terminal)
+    let snapshot = tracker_for_summary.snapshot();
+    let completed = snapshot.completed;
+    let total = snapshot.total;
+    let skipped = snapshot
+        .files
+        .iter()
+        .filter(|f| matches!(f.status, crate::common::FileStatus::Skipped))
+        .count();
+    let failed = snapshot
+        .files
+        .iter()
+        .filter(|f| matches!(f.status, crate::common::FileStatus::Failed(_)))
+        .count();
+
+    if total > 0 {
+        let mut parts = vec![format!("{}/{} file(s) transferred", completed - skipped - failed, total)];
+        if skipped > 0 {
+            parts.push(format!("{} skipped", skipped));
+        }
+        if failed > 0 {
+            parts.push(format!("{} failed", failed));
+        }
+        eprintln!("\n{}", parts.join(", "));
+    }
 
     // Shutdown tunnel if it exists
     if let Some(ref mut t) = tunnel {
@@ -371,7 +399,7 @@ async fn wait_for_transfers<S: TransferState>(
                 if current_count != last_count {
                     tracing::info!("{} transfer(s) remaining...", current_count);
                     let _ = status_sender.send(Some(format!(
-                        "{} transfer(s) remaining - Press Ctrl+C to force quit",
+                        "Completing {} transfer(s)... Press Ctrl+C again to force quit (may lose data)",
                         current_count
                     )));
                     last_count = current_count;

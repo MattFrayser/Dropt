@@ -280,7 +280,7 @@ fn apply_skipped_reports(state: &SendAppState, reports: Vec<SkippedFileReport>) 
             continue;
         }
 
-        let Some(reason) = normalize_skip_reason(report.reason.as_str()) else {
+        let Some(_reason) = normalize_skip_reason(report.reason.as_str()) else {
             tracing::warn!(
                 file_index = report.file_index,
                 reason = report.reason,

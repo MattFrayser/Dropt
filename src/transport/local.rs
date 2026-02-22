@@ -3,7 +3,7 @@
 //! - Tunnel mode should bind loopback only.
 //! - Local HTTPS mode may bind all interfaces for LAN access.
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use axum_server::tls_rustls::RustlsConfig;
 use rcgen::generate_simple_self_signed;
 use std::net::{SocketAddr, UdpSocket};
@@ -36,11 +36,12 @@ pub async fn start_local_server(
     port: u16,
 ) -> Result<(u16, axum_server::Handle)> {
     let addr = bind_addr(bind_scope, port);
-    let listener = std::net::TcpListener::bind(addr).context(
-        "Failed to bind to port - port already in use.\n\n\
+    let listener = std::net::TcpListener::bind(addr).context(format!(
+        "Failed to bind to port {}.\n\n\
          Is another dropt instance running?\n\
-         Or is another service using this port?",
-    )?;
+         Try a different port: dropt send --port <PORT> or --port 0 for auto-assign",
+        if port == 0 { "(auto-assign)".to_string() } else { port.to_string() }
+    ))?;
 
     listener
         .set_nonblocking(true)
@@ -53,36 +54,59 @@ pub async fn start_local_server(
     let server_handle_clone = server_handle.clone();
 
     // HTTPS uses self signed certs
-    match protocol {
+    let server_task = match protocol {
         Protocol::Https => {
             let local_ip = get_local_ip().unwrap_or_else(|_| "127.0.0.1".to_string());
             let tls_config = generate_cert(&local_ip)
                 .await
                 .context("Failed to generate TLS certificate")?;
             tokio::spawn(async move {
-                if let Err(e) = axum_server::from_tcp_rustls(listener, tls_config)
+                if let Err(err) = axum_server::from_tcp_rustls(listener, tls_config)
                     .handle(server_handle_clone)
                     .serve(app.into_make_service())
                     .await
                 {
-                    eprintln!("Server error: {}", e);
+                    tracing::error!(error = %err, "HTTPS server terminated");
+                    return Err(anyhow!(err));
                 }
-            });
+                Ok(())
+            })
         }
         Protocol::Http => {
             tokio::spawn(async move {
-                if let Err(e) = axum_server::from_tcp(listener)
+                if let Err(err) = axum_server::from_tcp(listener)
                     .handle(server_handle_clone)
                     .serve(app.into_make_service())
                     .await
                 {
-                    eprintln!("Server error: {}", e);
+                    tracing::error!(error = %err, "HTTP server terminated");
+                    return Err(anyhow!(err));
                 }
-            });
+                Ok(())
+            })
         }
-    }
+    };
+
+    await_server_startup_probe(server_task).await?;
 
     Ok((port, server_handle))
+}
+
+async fn await_server_startup_probe(server_task: tokio::task::JoinHandle<Result<()>>) -> Result<()> {
+    tokio::task::yield_now().await;
+
+    if !server_task.is_finished() {
+        return Ok(());
+    }
+
+    match server_task.await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(err)) => Err(err.context("local server task failed during startup")),
+        Err(join_err) => Err(anyhow!(
+            "local server task panicked during startup: {}",
+            join_err
+        )),
+    }
 }
 
 /// Best-effort local non-loopback IP discovery for URL/certificate use.
@@ -118,6 +142,8 @@ pub async fn generate_cert(ip: &str) -> Result<RustlsConfig> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::anyhow;
+    use tokio::task::JoinHandle;
 
     #[test]
     fn loopback_scope_binds_only_loopback() {
@@ -129,5 +155,23 @@ mod tests {
     fn all_interfaces_scope_binds_lan_capable() {
         let addr = bind_addr(BindScope::AllInterfaces, 8080);
         assert_eq!(addr.ip().to_string(), "0.0.0.0");
+    }
+
+    #[tokio::test]
+    async fn startup_probe_surfaces_early_server_failure() {
+        let task: JoinHandle<Result<()>> = tokio::spawn(async { Err(anyhow!("boom")) });
+        let err = await_server_startup_probe(task).await.unwrap_err();
+        assert!(err.to_string().contains("failed during startup"));
+    }
+
+    #[tokio::test]
+    async fn startup_probe_allows_running_server_task() {
+        let task: JoinHandle<Result<()>> = tokio::spawn(async {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            Ok(())
+        });
+        await_server_startup_probe(task)
+            .await
+            .expect("long-running server task should pass startup probe");
     }
 }

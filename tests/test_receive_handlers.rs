@@ -5,9 +5,10 @@ use axum::{
     http::StatusCode,
 };
 use common::receive_http::{
-    build_finalize_request, build_json_request, build_multipart_request, create_receive_test_app,
-    extract_json, with_lock_token,
+    build_complete_request, build_finalize_request, build_json_request, build_multipart_request,
+    create_receive_test_app, create_receive_test_app_with_policy, extract_json, with_lock_token,
 };
+use dropt::common::CollisionPolicy;
 use common::{create_cipher, setup_temp_dir, CHUNK_SIZE};
 use tower::ServiceExt;
 
@@ -904,4 +905,190 @@ async fn test_manifest_empty_files_list() {
         StatusCode::OK,
         "Empty manifest should be accepted"
     );
+}
+
+#[tokio::test]
+async fn test_overwrite_collision_replaces_existing_file() {
+    let temp_dir = setup_temp_dir();
+    let key = EncryptionKey::new();
+    let (app, state) = create_receive_test_app_with_policy(
+        temp_dir.path().to_path_buf(),
+        key.clone(),
+        CollisionPolicy::Overwrite,
+    );
+    let token = state.session.token().to_string();
+
+    // Pre-create a file that will be collided with
+    let original_content = b"original content";
+    tokio::fs::write(temp_dir.path().join("overwrite_me.txt"), original_content)
+        .await
+        .expect("Failed to write pre-existing file");
+
+    // New content to overwrite with
+    let new_content = b"new content replaces old";
+    let nonce = Nonce::new();
+    let manifest = serde_json::json!({
+        "files": [{"relative_path": "overwrite_me.txt", "size": new_content.len() as u64}]
+    });
+
+    let request = build_json_request("/receive/manifest", manifest, &token);
+    let response = app.clone().oneshot(request).await.expect("manifest request");
+    assert_eq!(response.status(), StatusCode::OK);
+    let lock_token = extract_json(response).await["lockToken"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let cipher = create_cipher(&key);
+    let mut encrypted = new_content.to_vec();
+    dropt::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted, 0)
+        .expect("encrypt chunk");
+
+    let request = with_lock_token(
+        build_multipart_request(
+            "/receive/chunk",
+            "overwrite_me.txt",
+            0,
+            1,
+            new_content.len() as u64,
+            &nonce.to_base64(),
+            encrypted,
+            &token,
+        ),
+        &lock_token,
+    );
+    let response = app.clone().oneshot(request).await.expect("chunk request");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let request = with_lock_token(
+        build_finalize_request("/receive/finalize", "overwrite_me.txt", &token),
+        &lock_token,
+    );
+    let response = app.clone().oneshot(request).await.expect("finalize request");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let written = tokio::fs::read(temp_dir.path().join("overwrite_me.txt"))
+        .await
+        .expect("read output file");
+    assert_eq!(written, new_content, "file should contain new content after overwrite");
+}
+
+#[tokio::test]
+async fn test_complete_rejected_when_files_not_finalized() {
+    let temp_dir = setup_temp_dir();
+    let key = EncryptionKey::new();
+    let (app, state) = create_test_app(temp_dir.path().to_path_buf(), key);
+    let token = state.session.token().to_string();
+
+    let manifest = serde_json::json!({
+        "files": [{"relative_path": "pending.txt", "size": 16u64}]
+    });
+
+    let manifest_response = app
+        .clone()
+        .oneshot(build_json_request("/receive/manifest", manifest, &token))
+        .await
+        .expect("manifest request");
+    assert_eq!(manifest_response.status(), StatusCode::OK);
+    let lock_token = extract_json(manifest_response).await["lockToken"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let request = with_lock_token(build_complete_request("/receive/complete", &token), &lock_token);
+    let response = app.clone().oneshot(request).await.expect("complete request");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let body = extract_json(response).await;
+    let message = body["error"]["message"].as_str().unwrap_or("");
+    assert!(message.contains("incomplete"), "unexpected message: {message}");
+}
+
+#[tokio::test]
+async fn test_complete_succeeds_after_all_files_finalized() {
+    let temp_dir = setup_temp_dir();
+    let key = EncryptionKey::new();
+    let (app, state) = create_test_app(temp_dir.path().to_path_buf(), key.clone());
+    let token = state.session.token().to_string();
+
+    let file_data = b"complete me";
+    let nonce = Nonce::new();
+    let manifest = serde_json::json!({
+        "files": [{"relative_path": "done.txt", "size": file_data.len() as u64}]
+    });
+
+    let manifest_response = app
+        .clone()
+        .oneshot(build_json_request("/receive/manifest", manifest, &token))
+        .await
+        .expect("manifest request");
+    assert_eq!(manifest_response.status(), StatusCode::OK);
+    let lock_token = extract_json(manifest_response).await["lockToken"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let cipher = create_cipher(&key);
+    let mut encrypted = file_data.to_vec();
+    dropt::crypto::encrypt_chunk_in_place(&cipher, &nonce, &mut encrypted, 0)
+        .expect("encrypt chunk");
+
+    let chunk_request = with_lock_token(
+        build_multipart_request(
+            "/receive/chunk",
+            "done.txt",
+            0,
+            1,
+            file_data.len() as u64,
+            &nonce.to_base64(),
+            encrypted,
+            &token,
+        ),
+        &lock_token,
+    );
+    let chunk_response = app.clone().oneshot(chunk_request).await.expect("chunk request");
+    assert_eq!(chunk_response.status(), StatusCode::OK);
+
+    let finalize_request = with_lock_token(
+        build_finalize_request("/receive/finalize", "done.txt", &token),
+        &lock_token,
+    );
+    let finalize_response = app
+        .clone()
+        .oneshot(finalize_request)
+        .await
+        .expect("finalize request");
+    assert_eq!(finalize_response.status(), StatusCode::OK);
+
+    let complete_request = with_lock_token(build_complete_request("/receive/complete", &token), &lock_token);
+    let complete_response = app
+        .clone()
+        .oneshot(complete_request)
+        .await
+        .expect("complete request");
+    assert_eq!(complete_response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_complete_accepts_empty_manifest() {
+    let temp_dir = setup_temp_dir();
+    let key = EncryptionKey::new();
+    let (app, state) = create_test_app(temp_dir.path().to_path_buf(), key);
+    let token = state.session.token().to_string();
+
+    let manifest = serde_json::json!({"files": []});
+    let manifest_response = app
+        .clone()
+        .oneshot(build_json_request("/receive/manifest", manifest, &token))
+        .await
+        .expect("manifest request");
+    assert_eq!(manifest_response.status(), StatusCode::OK);
+    let lock_token = extract_json(manifest_response).await["lockToken"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let request = with_lock_token(build_complete_request("/receive/complete", &token), &lock_token);
+    let response = app.clone().oneshot(request).await.expect("complete request");
+    assert_eq!(response.status(), StatusCode::OK);
 }

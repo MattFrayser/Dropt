@@ -17,8 +17,6 @@ pub struct FileReceiveState {
     pub storage: ChunkStorage,
     pub total_chunks: usize,
     pub nonce: Option<Nonce>,  // stored once, validated on subsequent chunks
-    pub relative_path: String,
-    pub file_size: u64,
     pub file_index: usize,
 }
 

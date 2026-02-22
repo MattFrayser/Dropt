@@ -19,9 +19,17 @@ use dropt::server::routes;
 // App Factory
 //===========
 pub fn create_receive_test_app(output_dir: PathBuf, key: EncryptionKey) -> (Router, ReceiveAppState) {
+    create_receive_test_app_with_policy(output_dir, key, CollisionPolicy::default())
+}
+
+pub fn create_receive_test_app_with_policy(
+    output_dir: PathBuf,
+    key: EncryptionKey,
+    policy: CollisionPolicy,
+) -> (Router, ReceiveAppState) {
     let progress = Arc::new(ProgressTracker::new());
     let config = default_config();
-    let state = ReceiveAppState::new(key, output_dir, progress, config, CollisionPolicy::default());
+    let state = ReceiveAppState::new(key, output_dir, progress, config, policy);
     let app = routes::create_receive_router(&state);
     (app, state)
 }
@@ -109,6 +117,15 @@ pub fn build_finalize_request(uri: &str, relative_path: &str, token: &str) -> Re
         .header("Authorization", format!("Bearer {}", token))
         .body(Body::from(body))
         .expect("Failed to build finalize request")
+}
+
+pub fn build_complete_request(uri: &str, token: &str) -> Request<Body> {
+    Request::builder()
+        .method(Method::POST)
+        .uri(uri)
+        .header("Authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .expect("Failed to build complete request")
 }
 
 //==============

@@ -18,39 +18,39 @@ struct EnvRestore {
 impl Drop for EnvRestore {
     fn drop(&mut self) {
         if let Some(value) = self.xdg_config_home.take() {
-            std::env::set_var("XDG_CONFIG_HOME", value);
+            set_env_var("XDG_CONFIG_HOME", value);
         } else {
-            std::env::remove_var("XDG_CONFIG_HOME");
+            remove_env_var("XDG_CONFIG_HOME");
         }
 
         if let Some(value) = self.local_port.take() {
-            std::env::set_var("DROPT_LOCAL_PORT", value);
+            set_env_var("DROPT_LOCAL_PORT", value);
         } else {
-            std::env::remove_var("DROPT_LOCAL_PORT");
+            remove_env_var("DROPT_LOCAL_PORT");
         }
 
         if let Some(value) = self.cloudflare_port.take() {
-            std::env::set_var("DROPT_CLOUDFLARE_PORT", value);
+            set_env_var("DROPT_CLOUDFLARE_PORT", value);
         } else {
-            std::env::remove_var("DROPT_CLOUDFLARE_PORT");
+            remove_env_var("DROPT_CLOUDFLARE_PORT");
         }
 
         if let Some(value) = self.tailscale_port.take() {
-            std::env::set_var("DROPT_TAILSCALE_PORT", value);
+            set_env_var("DROPT_TAILSCALE_PORT", value);
         } else {
-            std::env::remove_var("DROPT_TAILSCALE_PORT");
+            remove_env_var("DROPT_TAILSCALE_PORT");
         }
 
         if let Some(value) = self.default_transport.take() {
-            std::env::set_var("DROPT_DEFAULT_TRANSPORT", value);
+            set_env_var("DROPT_DEFAULT_TRANSPORT", value);
         } else {
-            std::env::remove_var("DROPT_DEFAULT_TRANSPORT");
+            remove_env_var("DROPT_DEFAULT_TRANSPORT");
         }
 
         if let Some(value) = self.zip.take() {
-            std::env::set_var("DROPT_ZIP", value);
+            set_env_var("DROPT_ZIP", value);
         } else {
-            std::env::remove_var("DROPT_ZIP");
+            remove_env_var("DROPT_ZIP");
         }
     }
 }
@@ -76,14 +76,33 @@ pub fn with_config_env<T>(config_toml: &str, f: impl FnOnce() -> T) -> T {
         zip: std::env::var_os("DROPT_ZIP"),
     };
 
-    std::env::set_var("XDG_CONFIG_HOME", temp_dir.path());
-    std::env::remove_var("DROPT_LOCAL_PORT");
-    std::env::remove_var("DROPT_CLOUDFLARE_PORT");
-    std::env::remove_var("DROPT_TAILSCALE_PORT");
-    std::env::remove_var("DROPT_DEFAULT_TRANSPORT");
-    std::env::remove_var("DROPT_ZIP");
+    set_env_var("XDG_CONFIG_HOME", temp_dir.path());
+    remove_env_var("DROPT_LOCAL_PORT");
+    remove_env_var("DROPT_CLOUDFLARE_PORT");
+    remove_env_var("DROPT_TAILSCALE_PORT");
+    remove_env_var("DROPT_DEFAULT_TRANSPORT");
+    remove_env_var("DROPT_ZIP");
 
     let result = f();
     drop(restore);
     result
+}
+
+pub fn set_env_var<K, V>(key: K, value: V)
+where
+    K: AsRef<std::ffi::OsStr>,
+    V: AsRef<std::ffi::OsStr>,
+{
+    unsafe {
+        std::env::set_var(key, value);
+    }
+}
+
+pub fn remove_env_var<K>(key: K)
+where
+    K: AsRef<std::ffi::OsStr>,
+{
+    unsafe {
+        std::env::remove_var(key);
+    }
 }

@@ -127,36 +127,21 @@ pub async fn receive_manifest(
         let file_chunks = file.size.div_ceil(chunk_size);
         let file_id = security::hash_path(&file.relative_path);
 
-        match resolution {
+        let Some(final_path) = (match resolution {
             CollisionResolution::Skip => {
                 skipped_files.push(file.relative_path.clone());
                 state
                     .progress
                     .file_collision_outcome(progress_index, CollisionOutcome::Skipped);
+                None
             }
             CollisionResolution::Overwrote(path) => {
-                session_total_chunks += file_chunks;
                 state
                     .progress
                     .file_collision_outcome(progress_index, CollisionOutcome::Overwrote);
-
-                let storage = ChunkStorage::new(path, file.size, chunk_size)
-                    .await
-                    .context("create storage")?;
-
-                let new_state = FileReceiveState {
-                    storage,
-                    total_chunks: file_chunks as usize,
-                    nonce: None,
-                    relative_path: file.relative_path,
-                    file_size: file.size,
-                    file_index: progress_index,
-                };
-                receive_session.insert(file_id, Arc::new(Mutex::new(new_state)));
+                Some(path)
             }
             CollisionResolution::Use(path) => {
-                session_total_chunks += file_chunks;
-
                 // find_available_path handles Suffix rename if file exists.
                 // For Skip/Overwrite, Use means no collision — returns path unchanged.
                 let final_path = find_available_path(path.clone()).await;
@@ -170,22 +155,23 @@ pub async fn receive_manifest(
                         .progress
                         .file_collision_outcome(progress_index, CollisionOutcome::Renamed(new_name));
                 }
-
-                let storage = ChunkStorage::new(final_path, file.size, chunk_size)
-                    .await
-                    .context("create storage")?;
-
-                let new_state = FileReceiveState {
-                    storage,
-                    total_chunks: file_chunks as usize,
-                    nonce: None,
-                    relative_path: file.relative_path,
-                    file_size: file.size,
-                    file_index: progress_index,
-                };
-                receive_session.insert(file_id, Arc::new(Mutex::new(new_state)));
+                Some(final_path)
             }
-        }
+        }) else {
+            continue;
+        };
+
+        session_total_chunks += file_chunks;
+        let storage = ChunkStorage::new(final_path, file.size, chunk_size)
+            .await
+            .context("create storage")?;
+        let new_state = FileReceiveState {
+            storage,
+            total_chunks: file_chunks as usize,
+            nonce: None,
+            file_index: progress_index,
+        };
+        receive_session.insert(file_id, Arc::new(Mutex::new(new_state)));
     }
 
     // Update session with total non-skipped chunks
@@ -384,6 +370,15 @@ pub async fn complete_transfer(
     State(state): State<ReceiveAppState>,
 ) -> Result<axum::Json<Value>, AppError> {
     auth::require_active_session(&state.session, &token, &lock_token)?;
+
+    let pending_files = state.receive_sessions.len();
+    if pending_files > 0 {
+        return Err(AppError::BadRequest(format!(
+            "transfer incomplete: {} file(s) not finalized",
+            pending_files
+        )));
+    }
+
     state.session.complete(&token, &lock_token);
 
     Ok(Json(

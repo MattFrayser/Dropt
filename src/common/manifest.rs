@@ -81,7 +81,7 @@ impl Manifest {
 
             validate_nonce_counter_chunks(metadata.len(), config.chunk_size, &name)?;
 
-            security::validate_filename(&name).context("Invalid fine name")?;
+            security::validate_filename(&name).context("Invalid file name")?;
 
             // Unique nonce for each file
             let nonce = Nonce::new();

@@ -174,12 +174,29 @@ async fn main() -> Result<()> {
                     if file.is_dir() {
                         // Add files in dir recursively
                         // handle nested directories
-                        for entry in WalkDir::new(&file)
-                            .into_iter()
-                            .filter_map(|e| e.ok())
-                            .filter(|e| e.path().is_file())
-                        {
-                            files.push(entry.path().to_path_buf());
+                        let mut skipped = Vec::new();
+                        for entry in WalkDir::new(&file) {
+                            match entry {
+                                Ok(e) if e.path().is_file() => {
+                                    files.push(e.path().to_path_buf());
+                                }
+                                Ok(_) => {} // directory entry, skip
+                                Err(e) => {
+                                    skipped.push(format!(
+                                        "  {}",
+                                        e.path()
+                                            .map(|p| p.display().to_string())
+                                            .unwrap_or_else(|| e.to_string())
+                                    ));
+                                }
+                            }
+                        }
+                        if !skipped.is_empty() {
+                            eprintln!(
+                                "Warning: skipped {} path(s) due to errors:\n{}",
+                                skipped.len(),
+                                skipped.join("\n")
+                            );
                         }
                     } else {
                         files.push(file); // single file
