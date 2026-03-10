@@ -18,7 +18,7 @@
 
 ```bash
 # 1) Install latest release
-curl -fsSL https://github.com/MattFrayser/Drop/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/MattFrayser/Dropt/releases/latest/download/install.sh | bash
 
 # 2) Send a file
 dropt send ./file.txt --via local
