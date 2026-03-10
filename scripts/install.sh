@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="MattFrayser/ArchDrop"
+REPO="MattFrayser/Dropt"
 BASE_URL="https://github.com/${REPO}/releases/latest/download"
 ARCHIVE="dropt-linux-x86_64.tar.gz"
 CHECKSUMS="checksums.txt"
